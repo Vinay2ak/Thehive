@@ -30,6 +30,7 @@ MODEL = "gpt-5-mini"
 PROVIDER = "openai"
 TIMEOUT_SECONDS = 15
 DELIM = "===SUMMARY==="
+PATCHED_DELIM = "===PATCHED==="
 
 
 class AuditRequest(BaseModel):
@@ -76,7 +77,12 @@ ARBITER_SYS = (
     "\u2534 \u253c and arrows ->. Keep every line under 54 characters. Max 18 lines.\n"
     f"2) Then a line containing exactly: {DELIM}\n"
     "3) Then a 2-3 sentence summary of what was hardened and why.\n"
-    "No markdown, no code fences, no headers, no extra commentary."
+    f"4) Then a line containing exactly: {PATCHED_DELIM}\n"
+    "5) Then 3 to 6 lines, ONE per vulnerability from the FAILURE MAP that the "
+    "v2.0 design fixes. Each line MUST use exactly this format:\n"
+    "<weakness from the failure map> :: <how the hardened design patches it>\n"
+    "Use ' :: ' (space colon colon space) as the separator. No bullets, no "
+    "numbering, no markdown, no code fences, no extra commentary."
 )
 
 # ---------------------------------------------------------------------------
@@ -144,6 +150,16 @@ MOCK_FINAL_SUMMARY = (
     "spikes, and replicates the database with failover. It preserves the original "
     "simplicity while eliminating the identified bottlenecks."
 )
+MOCK_FINAL_PATCHED = [
+    {"weakness": "Single API server (SPOF)",
+     "fix": "Auto-scaled API tier behind the LB with N replicas"},
+    {"weakness": "Un-replicated primary database",
+     "fix": "Primary + read replica with automatic failover"},
+    {"weakness": "DB write path bottleneck under load",
+     "fix": "Async queue absorbs and levels write spikes"},
+    {"weakness": "No caching for hot reads",
+     "fix": "Cache tier added in front of the database"},
+]
 
 
 def split_response(text: str):
@@ -159,6 +175,32 @@ def split_response(text: str):
     if not diagram.strip():
         return None
     return diagram, summary
+
+
+def split_arbiter(text: str):
+    """Split Arbiter output into (diagram, summary, patched_list) or None."""
+    if not text or not text.strip() or DELIM not in text:
+        return None
+    diagram, rest = text.split(DELIM, 1)
+    diagram = diagram.strip("\n")
+    if not diagram.strip():
+        return None
+    if PATCHED_DELIM in rest:
+        summary_part, patched_part = rest.split(PATCHED_DELIM, 1)
+    else:
+        summary_part, patched_part = rest, ""
+    summary = summary_part.strip()
+    patched = []
+    for line in patched_part.strip().splitlines():
+        line = line.strip().lstrip("-*\u2022").strip()
+        if not line:
+            continue
+        if "::" in line:
+            weakness, fix = line.split("::", 1)
+            patched.append({"weakness": weakness.strip(), "fix": fix.strip()})
+        else:
+            patched.append({"weakness": line, "fix": ""})
+    return diagram, summary, patched
 
 
 async def call_agent(system_message: str, user_text: str, stage: str):
@@ -242,10 +284,18 @@ async def audit_event_stream(requirements: str):
                 f"PROPOSED ARCHITECTURE:\n{arch_diagram}\n{arch_summary}\n\n"
                 f"FAILURE MAP:\n{att_diagram}\n{att_summary}"
             )
-            final_diagram, final_summary, fallback = await resolve_stage(
-                ARBITER_SYS, arbiter_input, "final",
-                MOCK_FINAL_DIAGRAM, MOCK_FINAL_SUMMARY,
-            )
+            arbiter_text = await call_agent(ARBITER_SYS, arbiter_input, "final")
+            parsed = split_arbiter(arbiter_text)
+            if parsed is None:
+                final_diagram = MOCK_FINAL_DIAGRAM
+                final_summary = MOCK_FINAL_SUMMARY
+                patched = MOCK_FINAL_PATCHED
+                fallback = True
+            else:
+                final_diagram, final_summary, patched = parsed
+                fallback = False
+                if not patched:
+                    patched = MOCK_FINAL_PATCHED
             response = {
                 "id": str(uuid.uuid4()),
                 "architect_diagram": arch_diagram,
@@ -254,6 +304,7 @@ async def audit_event_stream(requirements: str):
                 "architect_summary": arch_summary,
                 "attack_summary": att_summary,
                 "final_summary": final_summary,
+                "patched": patched,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             await queue.put(("final_done", {**response, "fallback": fallback}))

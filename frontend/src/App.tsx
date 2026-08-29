@@ -3,6 +3,11 @@ import React, { useMemo, useState } from "react";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL as string;
 const API = `${BACKEND_URL}/api`;
 
+interface PatchedItem {
+  weakness: string;
+  fix: string;
+}
+
 interface AuditResponse {
   id: string;
   architect_diagram: string;
@@ -11,6 +16,7 @@ interface AuditResponse {
   architect_summary: string;
   attack_summary: string;
   final_summary: string;
+  patched: PatchedItem[];
   timestamp: string;
 }
 
@@ -21,6 +27,7 @@ interface StageState {
   diagram: string;
   summary: string;
   fallback: boolean;
+  patched: PatchedItem[];
 }
 
 const EMPTY_STAGE: StageState = {
@@ -28,6 +35,7 @@ const EMPTY_STAGE: StageState = {
   diagram: "",
   summary: "",
   fallback: false,
+  patched: [],
 };
 
 const DEFAULT_REQUIREMENTS =
@@ -121,6 +129,38 @@ function StageColumn(props: {
             >
               {state.summary}
             </p>
+
+            {state.patched.length > 0 && (
+              <div
+                className="mt-1 border-t border-zinc-800 pt-3"
+                data-testid={`${testid}-patched`}
+              >
+                <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+                  // patched_from_chaos_injection
+                </div>
+                <ul className="flex flex-col gap-2">
+                  {state.patched.map((p, i) => (
+                    <li
+                      key={i}
+                      className="font-mono text-[11px] leading-snug"
+                      data-testid={`${testid}-patched-item-${i}`}
+                    >
+                      <div className="flex gap-1.5 text-amber-500">
+                        <span className="text-emerald-400">[✓]</span>
+                        <span className="line-through decoration-amber-500/50">
+                          {p.weakness}
+                        </span>
+                      </div>
+                      {p.fix && (
+                        <div className="pl-5 text-emerald-400">
+                          └─ {p.fix}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -149,6 +189,7 @@ export default function ArchAuditApp() {
         diagram: payload.architect_diagram,
         summary: payload.architect_summary,
         fallback: Boolean(payload.fallback),
+        patched: [],
       });
     } else if (event === "attack_done") {
       setChaos({
@@ -156,6 +197,7 @@ export default function ArchAuditApp() {
         diagram: payload.attack_diagram,
         summary: payload.attack_summary,
         fallback: Boolean(payload.fallback),
+        patched: [],
       });
     } else if (event === "final_done") {
       const res = payload as AuditResponse & { fallback?: boolean };
@@ -164,6 +206,7 @@ export default function ArchAuditApp() {
         diagram: res.final_diagram,
         summary: res.final_summary,
         fallback: Boolean(res.fallback),
+        patched: Array.isArray(res.patched) ? res.patched : [],
       });
     }
   };
