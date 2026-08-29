@@ -281,7 +281,7 @@ export default function ArchAuditApp() {
           </span>
         </div>
         <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-600">
-          gpt-5-mini / stateless
+          gemma-4-31b / stateless
         </span>
       </header>
 

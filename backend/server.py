@@ -12,7 +12,7 @@ from starlette.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from openai import AsyncOpenAI
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -26,11 +26,12 @@ logger = logging.getLogger("archaudit")
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
-MODEL = "gpt-5-mini"
-PROVIDER = "openai"
-TIMEOUT_SECONDS = 15
+NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
+MODEL = "google/gemma-4-31b-it"
+TIMEOUT_SECONDS = 30
 DELIM = "===SUMMARY==="
 PATCHED_DELIM = "===PATCHED==="
+BOX_CHARS = "┌─┐│└┘├┤┬┴┼"
 
 
 class AuditRequest(BaseModel):
@@ -162,34 +163,31 @@ MOCK_FINAL_PATCHED = [
 ]
 
 
-def split_response(text: str):
-    """Split raw LLM text into (diagram, summary). Returns None if unusable."""
-    if not text or not text.strip():
-        return None
-    if DELIM in text:
-        diagram, summary = text.split(DELIM, 1)
-    else:
-        diagram, summary = text, ""
-    diagram = diagram.strip("\n")
-    summary = summary.strip()
-    if not diagram.strip():
-        return None
-    return diagram, summary
+def _extract_diagram(block: str) -> str:
+    """Return the longest run of consecutive lines containing box-drawing chars.
+
+    Reasoning-style models may prepend prose that mentions the box characters
+    inline; the real diagram is always the longest contiguous block of such
+    lines, so we isolate that and drop any surrounding commentary.
+    """
+    runs = []
+    cur = []
+    for line in block.splitlines():
+        if any(c in line for c in BOX_CHARS):
+            cur.append(line)
+        else:
+            if cur:
+                runs.append(cur)
+                cur = []
+    if cur:
+        runs.append(cur)
+    if not runs:
+        return ""
+    best = max(runs, key=len)
+    return "\n".join(best).strip("\n")
 
 
-def split_arbiter(text: str):
-    """Split Arbiter output into (diagram, summary, patched_list) or None."""
-    if not text or not text.strip() or DELIM not in text:
-        return None
-    diagram, rest = text.split(DELIM, 1)
-    diagram = diagram.strip("\n")
-    if not diagram.strip():
-        return None
-    if PATCHED_DELIM in rest:
-        summary_part, patched_part = rest.split(PATCHED_DELIM, 1)
-    else:
-        summary_part, patched_part = rest, ""
-    summary = summary_part.strip()
+def _parse_patched(patched_part: str):
     patched = []
     for line in patched_part.strip().splitlines():
         line = line.strip().lstrip("-*\u2022").strip()
@@ -200,25 +198,68 @@ def split_arbiter(text: str):
             patched.append({"weakness": weakness.strip(), "fix": fix.strip()})
         else:
             patched.append({"weakness": line, "fix": ""})
-    return diagram, summary, patched
+    return patched
+
+
+def split_response(text: str):
+    """Split raw LLM text into (diagram, summary). Returns None if unusable."""
+    if not text or not text.strip():
+        return None
+    idx = text.rfind(DELIM)  # last occurrence = the real answer's delimiter
+    if idx < 0:
+        diagram = _extract_diagram(text)
+        return (diagram, "") if diagram else None
+    diagram = _extract_diagram(text[:idx])
+    summary = text[idx + len(DELIM):].strip()
+    if not diagram:
+        return None
+    return diagram, summary
+
+
+def split_arbiter(text: str):
+    """Split Arbiter output into (diagram, summary, patched_list) or None."""
+    if not text or not text.strip():
+        return None
+    p_idx = text.rfind(PATCHED_DELIM)
+    if p_idx >= 0:
+        head = text[:p_idx]
+        patched_part = text[p_idx + len(PATCHED_DELIM):]
+    else:
+        head = text
+        patched_part = ""
+    s_idx = head.rfind(DELIM)
+    if s_idx < 0:
+        diagram = _extract_diagram(head)
+        summary = ""
+    else:
+        diagram = _extract_diagram(head[:s_idx])
+        summary = head[s_idx + len(DELIM):].strip()
+    if not diagram:
+        return None
+    return diagram, summary, _parse_patched(patched_part)
 
 
 async def call_agent(system_message: str, user_text: str, stage: str):
-    """Call OpenAI via emergentintegrations. Returns raw text or None on failure."""
-    api_key = os.environ.get("OPENAI_API_KEY")
+    """Call NVIDIA NIM (OpenAI-compatible). Returns raw text or None on failure."""
+    api_key = os.environ.get("NVIDIA_API_KEY")
     if not api_key:
-        logger.warning("[%s] OPENAI_API_KEY missing — using deterministic mock.", stage)
+        logger.warning("[%s] NVIDIA_API_KEY missing — using deterministic mock.", stage)
         return None
     try:
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=str(uuid.uuid4()),
-            system_message=system_message,
-        ).with_model(PROVIDER, MODEL)
-        return await asyncio.wait_for(
-            chat.send_message(UserMessage(text=user_text)),
+        client = AsyncOpenAI(base_url=NVIDIA_BASE_URL, api_key=api_key)
+        resp = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=MODEL,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": user_text},
+                ],
+                temperature=0.4,
+                max_tokens=1200,
+            ),
             timeout=TIMEOUT_SECONDS,
         )
+        return resp.choices[0].message.content
     except asyncio.TimeoutError:
         logger.error("[%s] LLM call timed out after %ss — using mock.", stage, TIMEOUT_SECONDS)
         return None
