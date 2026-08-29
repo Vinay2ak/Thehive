@@ -88,7 +88,7 @@ function StageColumn(props: {
 
   return (
     <div
-      className="relative flex min-h-[340px] min-w-0 flex-col border-b border-[#1E3A5F]/50 last:border-b-0 xl:h-full xl:min-h-0 xl:flex-1 xl:border-b-0 xl:border-r"
+      className="relative flex min-h-[300px] min-w-0 flex-col border-b border-[#1E3A5F]/50 last:border-b-0 md:h-full md:min-h-0 md:flex-1 md:border-b-0 md:border-r"
       data-testid={testid}
       style={accentVars}
     >
@@ -196,7 +196,7 @@ function StageColumn(props: {
 
           {state.status === "loaded" && (
             <div
-              className="relative flex h-full flex-col"
+              className="relative flex h-full min-w-0 flex-col"
               data-testid={`${testid}-loaded`}
             >
               {/* Verdict stamp */}
@@ -204,7 +204,7 @@ function StageColumn(props: {
                 {verdict}
               </div>
 
-              <div className="reveal flex flex-col gap-3">
+              <div className="reveal flex min-w-0 flex-col gap-3">
                 {state.fallback && (
                   <div
                     className="border px-2 py-1"
@@ -220,7 +220,7 @@ function StageColumn(props: {
                   </div>
                 )}
                 <pre
-                  className="whitespace-pre font-mono text-[11px] leading-[1.5] text-[#C9D6E0]"
+                  className="max-w-full overflow-x-auto whitespace-pre font-mono text-[9px] leading-[1.5] text-[#C9D6E0] sm:text-[10px] 2xl:text-[11px]"
                   data-testid={`${testid}-diagram`}
                 >
                   {state.diagram}
@@ -523,9 +523,9 @@ export default function ArchAuditApp() {
       </header>
 
       {/* Body */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto xl:flex-row xl:overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
         {/* Left sidebar — Command Terminal (30%) */}
-        <aside className="flex w-full shrink-0 flex-col border-b border-[#1E3A5F]/60 xl:w-[30%] xl:border-b-0 xl:border-r">
+        <aside className="flex w-full shrink-0 flex-col border-b border-[#1E3A5F]/60 md:w-[30%] md:border-b-0 md:border-r">
           <div className="flex shrink-0 items-center gap-2 border-b border-[#1E3A5F]/50 bg-[#0E1524]/70 px-3 py-2.5">
             <span
               className="h-2 w-2 shrink-0"
@@ -588,8 +588,8 @@ export default function ArchAuditApp() {
         </aside>
 
         {/* Main canvas — three columns (70%) */}
-        <main className="min-w-0 flex-1 xl:overflow-hidden">
-          <div className="flex min-h-0 flex-col xl:h-full xl:flex-row">
+        <main className="min-w-0 flex-1 md:overflow-hidden">
+          <div className="flex min-h-0 flex-col md:h-full md:flex-row">
             <StageColumn
               columnKey="architect"
               title="v1.0 ARCHITECT"
