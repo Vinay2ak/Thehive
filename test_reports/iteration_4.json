@@ -1,0 +1,33 @@
+{
+  "summary": "Frontend-only regression test for the header dot alignment CSS fix in ARCHAUDIT. Verified that the accent dot (first child span) inside each of the three column headers (column-architect, column-chaos, column-hardened) aligns with the FIRST line of the wrapped title, not floating between two lines. Also verified core EXECUTE AUDIT flow still populates all three columns.",
+  "test_methodology": "Loaded app via REACT_APP_BACKEND_URL at multiple viewport widths (1180, 1024, 900, 820, 768). At width=820 the CHAOS_INJECTION title wraps to 2 lines (titleH=32, lineHeight=16). Measured dotCenter - firstLineCenter via JS getBoundingClientRect. Result across all widths and wrapped states: diff = -1px (dot center is 1px above the first-line's vertical center) — this confirms top-alignment to the first title line. If the dot were mis-centered between two wrapped lines, diff would be ~+8px.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Loaded panel diagram area", "issues": ["Verdict stamp overlay (STRUCTURAL SOUND / FRACTURED / HARDENED) overlaps and clips the ASCII diagram top line, making both hard to read. Cosmetic — pre-existing and outside the scope of this fix."]}
+    ]
+  },
+  "verification_evidence": {
+    "dot_alignment_measurements": {
+      "width_1180_no_wrap": {"architect": -1, "chaos": -1, "hardened": -1},
+      "width_900_chaos_wrapped": {"architect": -1, "chaos_wrapped": -1, "hardened": -1},
+      "width_820_chaos_wrapped": {"architect": -1, "chaos_wrapped": -1, "hardened": -1},
+      "unit": "pixels (dotCenter - firstLineCenter). ~0 = aligned to first line; ~+8 would indicate misaligned (centered between two lines)."
+    },
+    "regression_execute_audit": "All three columns reached loaded state (column-architect-loaded, column-chaos-loaded, column-hardened-loaded) after clicking execute-audit-button. COPY buttons and latency badges rendered without clipping the titles."
+  },
+  "test_report_links": ["/app/test_reports/iteration_4.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Fix in StageColumn header (App.tsx:103-108) is correct: items-start on the flex container + mt-[3px] on the 8x8 dot yields exact vertical alignment with the first title line, verified across wrapped and non-wrapped states.",
+    "Minor unrelated: verdict stamp overlays clip the ASCII diagram behind them (cosmetic, pre-existing)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100%"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Header dot alignment bug fix verified at 820px viewport where CHAOS_INJECTION wraps to two lines. Measurement helper: compare (dotCenter - firstLineCenter) — should be ~0 for correctly aligned first-line dot."
+}

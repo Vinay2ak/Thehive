@@ -100,9 +100,9 @@ function StageColumn(props: {
 
       {/* Header row */}
       <div className="relative z-10 flex shrink-0 flex-col gap-2 border-b border-[#1E3A5F]/50 bg-[#0E1524]/70 px-3 py-2.5 backdrop-blur-sm">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-start gap-2">
           <span
-            className="h-2 w-2 shrink-0"
+            className="mt-[3px] h-2 w-2 shrink-0"
             style={{ background: accent }}
             aria-hidden="true"
           />
