@@ -29,7 +29,7 @@ api_router = APIRouter(prefix="/api")
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 MODEL = "google/gemma-4-31b-it"
-TIMEOUT_SECONDS = 4
+TIMEOUT_SECONDS = 1.5
 HEARTBEAT_SECONDS = 8
 DELIM = "===SUMMARY==="
 PATCHED_DELIM = "===PATCHED==="
