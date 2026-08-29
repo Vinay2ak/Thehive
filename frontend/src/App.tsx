@@ -53,6 +53,11 @@ const COLUMNS: Record<string, { accent: string; verdict: string }> = {
 const CHAOS = "#E8543E";
 const MINT = "#3ECF8E";
 
+function formatElapsed(ms?: number): string | null {
+  if (ms == null) return null;
+  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
 function StageColumn(props: {
   columnKey: string;
   title: string;
