@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
-import { Volume2, VolumeX, Download } from "lucide-react";
+import { Volume2, VolumeX, Download, Copy, Check } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL as string;
 const API = `${BACKEND_URL}/api`;
@@ -68,6 +68,23 @@ function StageColumn(props: {
 }) {
   const { title, accent, verdict, state, testid } = props;
   const accentVars = { "--accent": accent } as React.CSSProperties;
+  const [copied, setCopied] = useState(false);
+
+  const copyDiagram = async () => {
+    const text = state.diagram || "";
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1400);
+  };
 
   return (
     <div
@@ -93,19 +110,34 @@ function StageColumn(props: {
             {title}
           </span>
         </div>
-        {state.status === "loaded" && formatElapsed(state.elapsedMs) && (
-          <span
-            className="shrink-0 border px-1.5 py-0.5 font-mono text-[10px] tracking-widest"
-            style={{
-              borderColor: `${accent}66`,
-              color: accent,
-              background: `${accent}0D`,
-            }}
-            data-testid={`${testid}-latency`}
-            title="Stage response time"
-          >
-            {formatElapsed(state.elapsedMs)}
-          </span>
+        {state.status === "loaded" && (
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              onClick={copyDiagram}
+              data-testid={`${testid}-copy`}
+              aria-label="Copy ASCII diagram"
+              title={copied ? "Copied" : "Copy diagram"}
+              className="flex h-6 items-center gap-1 border px-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F2F0E9]"
+              style={{ borderColor: `${accent}66`, color: accent }}
+            >
+              {copied ? <Check size={11} /> : <Copy size={11} />}
+              {copied ? "Copied" : "Copy"}
+            </button>
+            {formatElapsed(state.elapsedMs) && (
+              <span
+                className="border px-1.5 py-0.5 font-mono text-[10px] tracking-widest"
+                style={{
+                  borderColor: `${accent}66`,
+                  color: accent,
+                  background: `${accent}0D`,
+                }}
+                data-testid={`${testid}-latency`}
+                title="Stage response time"
+              >
+                {formatElapsed(state.elapsedMs)}
+              </span>
+            )}
+          </div>
         )}
       </div>
 
