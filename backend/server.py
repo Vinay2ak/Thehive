@@ -290,42 +290,45 @@ async def audit_event_stream(requirements: str):
     queue: asyncio.Queue = asyncio.Queue()
     store: dict = {}
 
-    async def run_architect():
+    async def run_stage(system_prompt, name, mock_diagram, mock_summary):
         t0 = time.monotonic()
         diagram, summary, fallback = await resolve_stage(
-            ARCHITECT_SYS, requirements, "architect",
-            MOCK_ARCHITECT_DIAGRAM, MOCK_ARCHITECT_SUMMARY,
+            system_prompt, requirements, name, mock_diagram, mock_summary,
         )
-        store["architect"] = (diagram, summary)
-        await queue.put(("architect_done", {
-            "architect_diagram": diagram,
-            "architect_summary": summary,
-            "fallback": fallback,
-            "elapsed_ms": int((time.monotonic() - t0) * 1000),
-        }))
-
-    async def run_attack():
-        t0 = time.monotonic()
-        diagram, summary, fallback = await resolve_stage(
-            CHAOS_SYS, requirements, "attack",
-            MOCK_ATTACK_DIAGRAM, MOCK_ATTACK_SUMMARY,
-        )
-        store["attack"] = (diagram, summary)
-        await queue.put(("attack_done", {
-            "attack_diagram": diagram,
-            "attack_summary": summary,
-            "fallback": fallback,
-            "elapsed_ms": int((time.monotonic() - t0) * 1000),
-        }))
+        return diagram, summary, fallback, int((time.monotonic() - t0) * 1000)
 
     async def orchestrate():
         try:
-            # 1 + 2: two independent calls, truly concurrent, pushed as each finishes.
-            await asyncio.gather(run_architect(), run_attack())
+            # 1 + 2: launch BOTH calls concurrently (true parallelism preserved)...
+            arch_task = asyncio.create_task(
+                run_stage(ARCHITECT_SYS, "architect",
+                          MOCK_ARCHITECT_DIAGRAM, MOCK_ARCHITECT_SUMMARY)
+            )
+            attack_task = asyncio.create_task(
+                run_stage(CHAOS_SYS, "attack",
+                          MOCK_ATTACK_DIAGRAM, MOCK_ATTACK_SUMMARY)
+            )
+
+            # ...but emit in a FIXED order so columns always fill v1.0 -> v1.1.
+            arch_diagram, arch_summary, arch_fb, arch_ms = await arch_task
+            store["architect"] = (arch_diagram, arch_summary)
+            await queue.put(("architect_done", {
+                "architect_diagram": arch_diagram,
+                "architect_summary": arch_summary,
+                "fallback": arch_fb,
+                "elapsed_ms": arch_ms,
+            }))
+
+            att_diagram, att_summary, att_fb, att_ms = await attack_task
+            store["attack"] = (att_diagram, att_summary)
+            await queue.put(("attack_done", {
+                "attack_diagram": att_diagram,
+                "attack_summary": att_summary,
+                "fallback": att_fb,
+                "elapsed_ms": att_ms,
+            }))
 
             # 3: Arbiter takes BOTH prior outputs.
-            arch_diagram, arch_summary = store["architect"]
-            att_diagram, att_summary = store["attack"]
             arbiter_input = (
                 f"REQUIREMENTS:\n{requirements}\n\n"
                 f"PROPOSED ARCHITECTURE:\n{arch_diagram}\n{arch_summary}\n\n"
