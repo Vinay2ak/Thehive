@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
+import { Volume2, VolumeX, Download } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL as string;
 const API = `${BACKEND_URL}/api`;
@@ -246,6 +247,106 @@ export default function ArchAuditApp() {
   const [architect, setArchitect] = useState<StageState>(EMPTY_STAGE);
   const [chaos, setChaos] = useState<StageState>(EMPTY_STAGE);
   const [hardened, setHardened] = useState<StageState>(EMPTY_STAGE);
+  const [muted, setMuted] = useState<boolean>(false);
+  const audioRef = useRef<AudioContext | null>(null);
+
+  const ensureAudio = () => {
+    if (!audioRef.current) {
+      const Ctx =
+        window.AudioContext || (window as any).webkitAudioContext;
+      if (Ctx) audioRef.current = new Ctx();
+    }
+    if (audioRef.current && audioRef.current.state === "suspended") {
+      audioRef.current.resume();
+    }
+    return audioRef.current;
+  };
+
+  // Subtle synthesized "stamp thud" — a low body + a short transient click.
+  const playThud = () => {
+    if (muted) return;
+    const ctx = audioRef.current;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(150, t);
+    osc.frequency.exponentialRampToValueAtTime(55, t + 0.12);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.2, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.2);
+
+    const buffer = ctx.createBuffer(
+      1,
+      Math.floor(ctx.sampleRate * 0.05),
+      ctx.sampleRate,
+    );
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.11, t);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 1200;
+    noise.connect(hp).connect(ng).connect(ctx.destination);
+    noise.start(t);
+    noise.stop(t + 0.05);
+  };
+
+  const canExport = hardened.status === "loaded";
+
+  const buildReport = (): string => {
+    const block = (title: string, verdict: string, s: StageState) => {
+      const meta = [
+        s.elapsedMs != null ? formatElapsed(s.elapsedMs) : null,
+        s.fallback ? "CACHED_FALLBACK" : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      let out = `## ${title} — ${verdict}${meta ? `  (${meta})` : ""}\n\n`;
+      out += "```\n" + (s.diagram || "(no output)") + "\n```\n\n";
+      if (s.summary) out += s.summary + "\n";
+      if (s.patched.length) {
+        out += "\n### Patched from Chaos Injection\n";
+        for (const p of s.patched) {
+          out += `- ${p.weakness}${p.fix ? ` → ${p.fix}` : ""}\n`;
+        }
+      }
+      return out + "\n";
+    };
+    return (
+      "# ARCHAUDIT — Inspection Report\n\n" +
+      `Generated: ${new Date().toISOString()}\n` +
+      "Model: gemma-4-31b (NVIDIA NIM) · stateless\n\n" +
+      `## Requirements\n\n${requirements}\n\n` +
+      block("v1.0 ARCHITECT", COLUMNS.architect.verdict, architect) +
+      block("v1.1 CHAOS_INJECTION", COLUMNS.chaos.verdict, chaos) +
+      block("v2.0 HARDENED", COLUMNS.hardened.verdict, hardened)
+    );
+  };
+
+  const exportReport = () => {
+    if (!canExport) return;
+    const blob = new Blob([buildReport()], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `archaudit-report-${Date.now()}.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
 
   const lineNumbers = useMemo(() => {
     const count = Math.max(requirements.split("\n").length, 20);
@@ -284,11 +385,13 @@ export default function ArchAuditApp() {
         elapsedMs: res.elapsed_ms,
       });
     }
+    playThud();
   };
 
   const executeAudit = async () => {
     if (running || !requirements.trim()) return;
     setRunning(true);
+    ensureAudio();
     const loading: StageState = { ...EMPTY_STAGE, status: "loading" };
     setArchitect(loading);
     setChaos(loading);
@@ -330,6 +433,12 @@ export default function ArchAuditApp() {
           }
         }
       }
+
+      // Stream ended: if any stage never delivered, surface it as an error
+      // (e.g. the connection was truncated by a proxy) instead of hanging.
+      setArchitect((s) => (s.status === "loading" ? { ...s, status: "error" } : s));
+      setChaos((s) => (s.status === "loading" ? { ...s, status: "error" } : s));
+      setHardened((s) => (s.status === "loading" ? { ...s, status: "error" } : s));
     } catch (e) {
       // Connection-level failure: mark any still-pending column as errored.
       setArchitect((s) => (s.status === "loading" ? { ...s, status: "error" } : s));
@@ -361,6 +470,15 @@ export default function ArchAuditApp() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setMuted((m) => !m)}
+            data-testid="sound-toggle"
+            aria-label={muted ? "Unmute stamp sound" : "Mute stamp sound"}
+            title={muted ? "Sound off" : "Sound on"}
+            className="flex h-6 w-6 items-center justify-center border border-[#1E3A5F] text-[#8FA8B8] transition-colors hover:text-[#F2F0E9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF]"
+          >
+            {muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+          </button>
           <span className="font-mono text-[10px] uppercase tracking-widest text-[#8FA8B8]">
             gemma-4-31b
           </span>
@@ -421,6 +539,16 @@ export default function ArchAuditApp() {
               className="mt-3 shrink-0 rounded-none border border-transparent bg-[#F2F0E9] px-4 py-3 font-sans text-xs font-bold uppercase tracking-[0.18em] text-[#0B0F1A] transition-colors duration-150 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F1A] disabled:cursor-not-allowed disabled:bg-[#1E3A5F]/50 disabled:text-[#8FA8B8]/50"
             >
               {running ? "AUDIT_RUNNING..." : "EXECUTE AUDIT"}
+            </button>
+
+            <button
+              onClick={exportReport}
+              disabled={!canExport}
+              data-testid="export-report-button"
+              className="mt-2 flex shrink-0 items-center justify-center gap-2 rounded-none border border-[#1E3A5F] bg-transparent px-4 py-2.5 font-sans text-xs font-semibold uppercase tracking-[0.18em] text-[#8FA8B8] transition-colors duration-150 hover:border-[#5B8DEF] hover:text-[#F2F0E9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F1A] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#1E3A5F] disabled:hover:text-[#8FA8B8]"
+            >
+              <Download size={13} />
+              Export Report
             </button>
           </div>
         </aside>

@@ -29,7 +29,8 @@ api_router = APIRouter(prefix="/api")
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 MODEL = "google/gemma-4-31b-it"
-TIMEOUT_SECONDS = 30
+TIMEOUT_SECONDS = 20
+HEARTBEAT_SECONDS = 8
 DELIM = "===SUMMARY==="
 PATCHED_DELIM = "===PATCHED==="
 BOX_CHARS = "┌─┐│└┘├┤┬┴┼"
@@ -367,8 +368,17 @@ async def audit_event_stream(requirements: str):
 
     task = asyncio.create_task(orchestrate())
     try:
+        # Emit a heartbeat comment if no event arrives within HEARTBEAT_SECONDS
+        # so intermediary proxies never treat the SSE stream as idle.
+        yield ": open\n\n"
         while True:
-            event, data = await queue.get()
+            try:
+                event, data = await asyncio.wait_for(
+                    queue.get(), timeout=HEARTBEAT_SECONDS
+                )
+            except asyncio.TimeoutError:
+                yield ": keep-alive\n\n"
+                continue
             if event == "__end__":
                 break
             yield sse(event, data)
