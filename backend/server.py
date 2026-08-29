@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import uuid
 import asyncio
 import logging
@@ -289,6 +290,7 @@ async def audit_event_stream(requirements: str):
     store: dict = {}
 
     async def run_architect():
+        t0 = time.monotonic()
         diagram, summary, fallback = await resolve_stage(
             ARCHITECT_SYS, requirements, "architect",
             MOCK_ARCHITECT_DIAGRAM, MOCK_ARCHITECT_SUMMARY,
@@ -298,9 +300,11 @@ async def audit_event_stream(requirements: str):
             "architect_diagram": diagram,
             "architect_summary": summary,
             "fallback": fallback,
+            "elapsed_ms": int((time.monotonic() - t0) * 1000),
         }))
 
     async def run_attack():
+        t0 = time.monotonic()
         diagram, summary, fallback = await resolve_stage(
             CHAOS_SYS, requirements, "attack",
             MOCK_ATTACK_DIAGRAM, MOCK_ATTACK_SUMMARY,
@@ -310,6 +314,7 @@ async def audit_event_stream(requirements: str):
             "attack_diagram": diagram,
             "attack_summary": summary,
             "fallback": fallback,
+            "elapsed_ms": int((time.monotonic() - t0) * 1000),
         }))
 
     async def orchestrate():
@@ -325,6 +330,7 @@ async def audit_event_stream(requirements: str):
                 f"PROPOSED ARCHITECTURE:\n{arch_diagram}\n{arch_summary}\n\n"
                 f"FAILURE MAP:\n{att_diagram}\n{att_summary}"
             )
+            t0 = time.monotonic()
             arbiter_text = await call_agent(ARBITER_SYS, arbiter_input, "final")
             parsed = split_arbiter(arbiter_text)
             if parsed is None:
@@ -337,6 +343,7 @@ async def audit_event_stream(requirements: str):
                 fallback = False
                 if not patched:
                     patched = MOCK_FINAL_PATCHED
+            final_elapsed_ms = int((time.monotonic() - t0) * 1000)
             response = {
                 "id": str(uuid.uuid4()),
                 "architect_diagram": arch_diagram,
@@ -348,7 +355,11 @@ async def audit_event_stream(requirements: str):
                 "patched": patched,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
-            await queue.put(("final_done", {**response, "fallback": fallback}))
+            await queue.put(("final_done", {
+                **response,
+                "fallback": fallback,
+                "elapsed_ms": final_elapsed_ms,
+            }))
         except Exception as e:  # noqa: BLE001
             logger.error("Orchestration error: %s", e)
         finally:

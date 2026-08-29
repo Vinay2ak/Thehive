@@ -28,6 +28,7 @@ interface StageState {
   summary: string;
   fallback: boolean;
   patched: PatchedItem[];
+  elapsedMs?: number;
 }
 
 const EMPTY_STAGE: StageState = {
@@ -48,6 +49,11 @@ const ACCENTS: Record<string, string> = {
   hardened: "border-l-emerald-400",
 };
 
+function formatElapsed(ms?: number): string | null {
+  if (ms == null) return null;
+  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
 function StageColumn(props: {
   columnKey: string;
   title: string;
@@ -63,11 +69,20 @@ function StageColumn(props: {
       data-testid={testid}
     >
       <div
-        className={`shrink-0 border-b border-zinc-800 border-l-2 ${accent} bg-zinc-900/40 px-3 py-2`}
+        className={`flex shrink-0 items-center justify-between gap-2 border-b border-zinc-800 border-l-2 ${accent} bg-zinc-900/40 px-3 py-2`}
       >
         <span className="font-mono text-xs uppercase tracking-widest text-zinc-300">
           {title}
         </span>
+        {state.status === "loaded" && formatElapsed(state.elapsedMs) && (
+          <span
+            className="shrink-0 border border-emerald-400/40 bg-emerald-400/5 px-1.5 py-0.5 font-mono text-[10px] tracking-widest text-emerald-400"
+            data-testid={`${testid}-latency`}
+            title="Stage response time"
+          >
+            {formatElapsed(state.elapsedMs)}
+          </span>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto p-3">
@@ -190,6 +205,7 @@ export default function ArchAuditApp() {
         summary: payload.architect_summary,
         fallback: Boolean(payload.fallback),
         patched: [],
+        elapsedMs: payload.elapsed_ms,
       });
     } else if (event === "attack_done") {
       setChaos({
@@ -198,15 +214,17 @@ export default function ArchAuditApp() {
         summary: payload.attack_summary,
         fallback: Boolean(payload.fallback),
         patched: [],
+        elapsedMs: payload.elapsed_ms,
       });
     } else if (event === "final_done") {
-      const res = payload as AuditResponse & { fallback?: boolean };
+      const res = payload as AuditResponse & { fallback?: boolean; elapsed_ms?: number };
       setHardened({
         status: "loaded",
         diagram: res.final_diagram,
         summary: res.final_summary,
         fallback: Boolean(res.fallback),
         patched: Array.isArray(res.patched) ? res.patched : [],
+        elapsedMs: res.elapsed_ms,
       });
     }
   };
