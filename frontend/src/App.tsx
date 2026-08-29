@@ -88,7 +88,7 @@ function StageColumn(props: {
 
   return (
     <div
-      className="relative flex min-h-[62vh] min-w-0 flex-1 flex-col border-b border-[#1E3A5F]/50 last:border-b-0 md:h-full md:min-h-0 md:border-b-0 md:border-r"
+      className="relative flex min-h-[340px] min-w-0 flex-col border-b border-[#1E3A5F]/50 last:border-b-0 xl:h-full xl:min-h-0 xl:flex-1 xl:border-b-0 xl:border-r"
       data-testid={testid}
       style={accentVars}
     >
@@ -99,8 +99,8 @@ function StageColumn(props: {
       />
 
       {/* Header row */}
-      <div className="relative z-10 flex shrink-0 items-center justify-between gap-2 border-b border-[#1E3A5F]/50 bg-[#0E1524]/70 px-3 py-2.5 backdrop-blur-sm">
-        <div className="flex items-center gap-2">
+      <div className="relative z-10 flex shrink-0 items-start justify-between gap-2 border-b border-[#1E3A5F]/50 bg-[#0E1524]/70 px-3 py-2.5 backdrop-blur-sm">
+        <div className="flex min-w-0 items-center gap-2">
           <span
             className="h-2 w-2 shrink-0"
             style={{ background: accent }}
@@ -121,7 +121,9 @@ function StageColumn(props: {
               style={{ borderColor: `${accent}66`, color: accent }}
             >
               {copied ? <Check size={11} /> : <Copy size={11} />}
-              {copied ? "Copied" : "Copy"}
+              <span className="hidden sm:inline">
+                {copied ? "Copied" : "Copy"}
+              </span>
             </button>
             {formatElapsed(state.elapsedMs) && (
               <span
@@ -521,9 +523,9 @@ export default function ArchAuditApp() {
       </header>
 
       {/* Body */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto xl:flex-row xl:overflow-hidden">
         {/* Left sidebar — Command Terminal (30%) */}
-        <aside className="flex w-full shrink-0 flex-col border-b border-[#1E3A5F]/60 md:w-[30%] md:border-b-0 md:border-r">
+        <aside className="flex w-full shrink-0 flex-col border-b border-[#1E3A5F]/60 xl:w-[30%] xl:border-b-0 xl:border-r">
           <div className="flex shrink-0 items-center gap-2 border-b border-[#1E3A5F]/50 bg-[#0E1524]/70 px-3 py-2.5">
             <span
               className="h-2 w-2 shrink-0"
@@ -586,8 +588,8 @@ export default function ArchAuditApp() {
         </aside>
 
         {/* Main canvas — three columns (70%) */}
-        <main className="min-w-0 flex-1 md:overflow-hidden">
-          <div className="flex min-h-0 flex-col md:h-full md:flex-row">
+        <main className="min-w-0 flex-1 xl:overflow-hidden">
+          <div className="flex min-h-0 flex-col xl:h-full xl:flex-row">
             <StageColumn
               columnKey="architect"
               title="v1.0 ARCHITECT"
