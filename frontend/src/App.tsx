@@ -586,8 +586,8 @@ export default function ArchAuditApp() {
         </aside>
 
         {/* Main canvas — three columns (70%) */}
-        <main className="min-w-0 flex-1 md:overflow-x-auto">
-          <div className="flex min-h-0 flex-col md:h-full md:min-w-[760px] md:flex-row">
+        <main className="min-w-0 flex-1 md:overflow-hidden">
+          <div className="flex min-h-0 flex-col md:h-full md:flex-row">
             <StageColumn
               columnKey="architect"
               title="v1.0 ARCHITECT"
