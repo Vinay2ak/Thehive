@@ -1,0 +1,39 @@
+{
+  "summary": "Frontend-only regression + new-feature test for ARCHAUDIT. Verified idle state, sound toggle, and Export button disabled-state work correctly. However, the full audit flow cannot complete end-to-end via the public URL: only architect + chaos columns reach 'loaded', hardened stays in COMPILING_RESPONSE. Root cause is NOT the frontend — the /api/audit SSE connection is being terminated by the ingress at ~60s, and NVIDIA NIM (google/gemma-4-31b-it) is currently slow/timing out (30s each stage), so total wall time hits ~60s and the final_done SSE event is never delivered externally. Consequently the Export Report enabled + download flow could not be exercised (button remains disabled). Locally (localhost:8001) the SSE stream emits all three events (~60s), confirming backend orchestration is functional but pushed past the public ingress limit by the slow LLM.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/audit (SSE)", "issue": "External requests via REACT_APP_BACKEND_URL are cut off at ~60s by the ingress, so `final_done` SSE event never reaches the browser when NVIDIA calls approach their 30s per-stage timeout (architect+attack parallel = 30s, then final = up to 30s more = ~60s total). Reproduced with 3 curl runs to the public URL — always exactly `event: architect_done` + `event: attack_done` then connection closes at 60.2s. Localhost:8001 curl emits all 3 events successfully.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/audit", "issue": "NVIDIA NIM model `google/gemma-4-31b-it` is currently hitting the full 30s timeout on architect+attack in this environment (backend log: `[architect] LLM call timed out after 30s — using mock.` recurring). Fallback works correctly, but any total request time >60s is not visible to browser clients due to the ingress cutoff above."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Full audit + Export Report", "issue": "Because hardened column never loads (blocked by the backend/ingress issue above), the Export Report button never becomes enabled in the browser and the Markdown download path cannot be exercised end-to-end.", "affected_selectors": ["[data-testid=\"column-hardened-loaded\"]", "[data-testid=\"export-report-button\"]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_2.json"],
+  "action_items": [
+    "Raise ingress/proxy SSE idle+total timeout above 60s for /api/audit (recommended >=120s), OR",
+    "Reduce per-stage LLM timeout so total wall time stays under 60s even in the worst case (e.g., TIMEOUT_SECONDS=20 => 20 + 20 = 40s worst case), OR",
+    "Emit a keep-alive/heartbeat SSE comment every ~15s so the proxy does not consider the connection idle.",
+    "Investigate whether `google/gemma-4-31b-it` is the intended model (all requests currently time out at 30s in this env — the fallback works but is masking the outage; consider a shorter client timeout + immediate mock so hardened still lands within ingress window).",
+    "Once the above is fixed, re-run the frontend suite: (a) audit reaches all 3 loaded columns, (b) export-report-button becomes enabled, (c) clicking it downloads archaudit-report-<ts>.md whose content contains the 5 required Markdown headings."
+  ],
+  "critical_code_review_comments": [
+    "server.py: The audit orchestrator has no SSE keep-alive; on slow LLM paths the client-visible stream is silent for up to 30s between events, which invites proxy timeouts. Add a periodic `:` comment frame from the queue consumer.",
+    "server.py: Total worst-case latency (30s + 30s = 60s) lines up exactly with typical 60s ingress limits — very fragile. Either shorten TIMEOUT_SECONDS or fire the final stage optimistically alongside a mock timer.",
+    "App.tsx: On connection-level failure the pending columns are correctly moved to `error`, but when the SSE stream is *silently truncated* by the proxy (reader ends after only 2 events), the still-loading hardened column stays in `loading` forever with no user feedback. Consider treating `reader.done` while any column is still `loading` as an error too (and surface a toast/banner).",
+    "App.tsx `exportReport`: minor — uses `Date.now()` for filename (fine), but there is no user-visible confirmation and no error handling if Blob/URL APIs fail; low priority."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only run)", "frontend": "60% — idle/sound/export-disabled verified; full audit + export-enabled + download blocked by backend/ingress issue"},
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Public URL: https://archaudit-dev.preview.emergentagent.com. When NVIDIA is healthy the whole audit should complete in ~5-15s and the Export Report button will enable — at that point the download test (expect_download → verify filename matches `archaudit-report-*.md` and content contains the 5 headings `# ARCHAUDIT — Inspection Report`, `## Requirements`, `## v1.0 ARCHITECT`, `## v1.1 CHAOS_INJECTION`, `## v2.0 HARDENED`) can be run as-is. Sound toggle aria-label toggle behavior is already confirmed working ('Mute stamp sound' <-> 'Unmute stamp sound'). Idle-state and export-disabled-on-load are confirmed. If retesting while NVIDIA is still slow, either fix the backend timeout/heartbeat first, or shorten TIMEOUT_SECONDS in /app/backend/server.py to keep total < 60s.",
+  "rca_of_the_issue": "1) Reproduce: `curl -sN -X POST https://archaudit-dev.preview.emergentagent.com/api/audit -d '{\"requirements\":\"x\"}' -H 'Content-Type: application/json' --max-time 120` consistently returns only `architect_done` + `attack_done` and closes at 60.2s. Same command against `http://localhost:8001/api/audit` returns all three events including `final_done`. 2) Backend log confirms NVIDIA calls hit the 30s per-stage timeout, so architect+attack (parallel) take 30s, then final takes another ~30s → ~60s total, right at the public ingress SSE limit. 3) Frontend behaves correctly for what it receives, but never gets `final_done` and so `hardened.status` stays `loading`, keeping `canExport` false and `export-report-button` disabled. Mitigation: raise ingress timeout, add SSE heartbeats, and/or shorten backend TIMEOUT_SECONDS so worst case stays well under the ingress limit."
+}

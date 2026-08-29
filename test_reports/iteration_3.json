@@ -1,0 +1,28 @@
+{
+  "summary": "Frontend re-test of ARCHAUDIT after backend timeout/heartbeat fix (TIMEOUT_SECONDS=20, SSE heartbeats). Full end-to-end flow now completes over the public URL: all three columns (architect, chaos, hardened) reach the loaded state with verdict stamps + latency badges (~20s each, all via deterministic CACHED_FALLBACK because NVIDIA is still hitting the 20s per-stage timeout — expected/spec-approved). Export Report button correctly disabled on load, becomes enabled once hardened is loaded, and clicking it downloads a file named archaudit-report-<ts>.md containing all five required Markdown headings. Sound toggle aria-label flips between 'Mute stamp sound' and 'Unmute stamp sound' with no console errors and does not disrupt the audit. No frontend or integration issues observed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/audit", "issue": "NVIDIA NIM google/gemma-4-31b-it continues to hit the 20s per-stage timeout in this environment, so every stage lands on the CACHED_FALLBACK mock. Fallback works correctly and the UI still completes end-to-end, but real LLM output is never surfaced. Consider health-checking / swapping the upstream model."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_3.json"],
+  "action_items": [
+    "Optional: investigate why NVIDIA calls consistently exceed 20s in this env (all three stages currently mock-fallback). No blocker for the app; only the LLM quality is affected."
+  ],
+  "critical_code_review_comments": [
+    "server.py: TIMEOUT_SECONDS=20 + SSE heartbeats keep total wall time ~40s comfortably under the ingress limit — good.",
+    "App.tsx: On-stream-end safeguard that flips still-loading columns to 'error' is the right defensive move; not exercised in this run because all columns loaded successfully."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only run)", "frontend": "100% — all four test cases (full audit, export disabled→enabled, export download+content, sound toggle) passed"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Everything green on public URL https://archaudit-dev.preview.emergentagent.com. Verified selectors: execute-audit-button, export-report-button, sound-toggle, column-{architect,chaos,hardened}-{loaded,verdict,latency}. Downloaded file 'archaudit-report-1788041536786.md' (2935 chars) contained all 5 headings ('# ARCHAUDIT — Inspection Report', '## Requirements', '## v1.0 ARCHITECT', '## v1.1 CHAOS_INJECTION', '## v2.0 HARDENED'). Note NVIDIA is still slow so results come from mock fallback (STAGE_FAILED — SHOWING_CACHED_FALLBACK banner visible), which is spec-approved."
+}
