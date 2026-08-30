@@ -329,12 +329,11 @@ async def _call_nvidia(system_message: str, user_text: str, stage: str, model: s
 
 def _classify_error(e: Exception, stage: str) -> str:
     msg = str(e).lower()
+    reason = "error"
     if any(k in msg for k in ["401", "403", "unauthor", "invalid api key", "authentication", "forbidden", "no such"]):
         reason = "auth"
     elif any(k in msg for k in ["429", "rate limit", "rate_limit", "quota", "too many", "insufficient"]):
         reason = "rate_limit"
-    else:
-        reason = "error"
     logger.error("[%s] LLM call failed (%s): %s — using mock.", stage, reason, e)
     return reason
 
