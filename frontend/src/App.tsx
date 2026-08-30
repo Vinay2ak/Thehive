@@ -105,7 +105,7 @@ function StageColumn(props: {
 
   return (
     <div
-      className="relative flex min-h-[360px] min-w-[320px] flex-col border-b border-[#1F2937] bg-[#10151F] last:border-b-0 md:h-full md:min-h-0 md:flex-1 md:border-b-0 md:border-r"
+      className="relative flex min-h-[300px] min-w-0 flex-col overflow-hidden rounded-xl border border-[#1F2937] bg-[#10151F]/70 backdrop-blur-md md:h-full md:min-h-0 md:flex-1"
       data-testid={testid}
       style={accentVars}
     >
@@ -513,14 +513,14 @@ export default function ArchAuditApp() {
             data-testid="sound-toggle"
             aria-label={muted ? "Unmute stamp sound" : "Mute stamp sound"}
             title={muted ? "Sound off" : "Sound on"}
-            className="flex h-6 w-6 items-center justify-center border border-[#1F2937] text-[#8B96A5] transition-colors hover:text-[#E5E7EB] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF]"
+            className="flex h-6 w-6 items-center justify-center rounded-md border border-[#1F2937] text-[#8B96A5] transition-colors hover:text-[#E5E7EB] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF]"
           >
             {muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
           </button>
           <span className="font-mono text-[10px] uppercase tracking-widest text-[#8B96A5]">
             gemma-4-31b
           </span>
-          <span className="border border-[#1F2937] px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-[#8B96A5]/80">
+          <span className="rounded-md border border-[#1F2937] px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-[#8B96A5]/80">
             stateless
           </span>
         </div>
@@ -546,7 +546,7 @@ export default function ArchAuditApp() {
               // requirements.spec
             </label>
 
-            <div className="relative flex min-h-[200px] flex-1 border border-[#1F2937] bg-[#0B0F17] focus-within:ring-1 focus-within:ring-[#5B8DEF]">
+            <div className="relative flex min-h-[200px] flex-1 overflow-hidden rounded-md border border-[#1F2937] bg-[#0B0F17] focus-within:ring-1 focus-within:ring-[#5B8DEF]">
               <div
                 className="relative z-10 select-none overflow-hidden border-r border-[#1F2937] bg-[#10151F] px-2 py-2 text-right font-mono text-[11px] leading-relaxed text-[#8B96A5]/40"
                 aria-hidden="true"
@@ -569,7 +569,7 @@ export default function ArchAuditApp() {
               onClick={executeAudit}
               disabled={running || !requirements.trim()}
               data-testid="execute-audit-button"
-              className="mt-3 shrink-0 rounded-none border border-transparent bg-[#E5E7EB] px-4 py-3 font-sans text-xs font-bold uppercase tracking-[0.18em] text-[#0B0F17] transition-colors duration-150 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17] disabled:cursor-not-allowed disabled:bg-[#1F2937]/50 disabled:text-[#8B96A5]/50"
+              className="mt-3 shrink-0 rounded-md border border-transparent bg-[#E5E7EB] px-4 py-3 font-sans text-xs font-bold uppercase tracking-[0.18em] text-[#0B0F17] transition-colors duration-150 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17] disabled:cursor-not-allowed disabled:bg-[#1F2937]/50 disabled:text-[#8B96A5]/50"
             >
               {running ? "AUDIT_RUNNING..." : "EXECUTE AUDIT"}
             </button>
@@ -578,7 +578,7 @@ export default function ArchAuditApp() {
               onClick={exportReport}
               disabled={!canExport}
               data-testid="export-report-button"
-              className="mt-2 flex shrink-0 items-center justify-center gap-2 rounded-none border border-[#1F2937] bg-transparent px-4 py-2.5 font-sans text-xs font-semibold uppercase tracking-[0.18em] text-[#8B96A5] transition-colors duration-150 hover:border-[#5B8DEF] hover:text-[#E5E7EB] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#1F2937] disabled:hover:text-[#8B96A5]"
+              className="mt-2 flex shrink-0 items-center justify-center gap-2 rounded-md border border-[#1F2937] bg-transparent px-4 py-2.5 font-sans text-xs font-semibold uppercase tracking-[0.18em] text-[#8B96A5] transition-colors duration-150 hover:border-[#5B8DEF] hover:text-[#E5E7EB] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#1F2937] disabled:hover:text-[#8B96A5]"
             >
               <Download size={13} />
               Export Report
@@ -587,8 +587,8 @@ export default function ArchAuditApp() {
         </aside>
 
         {/* Main canvas — three columns (70%) */}
-        <main className="min-w-0 flex-1 md:overflow-x-auto">
-          <div className="flex min-h-0 flex-col md:h-full md:flex-row">
+        <main className="min-w-0 flex-1 md:overflow-hidden">
+          <div className="flex min-h-0 flex-col gap-2 p-2 md:h-full md:flex-row">
             <StageColumn
               columnKey="architect"
               title="v1.0 ARCHITECT"
