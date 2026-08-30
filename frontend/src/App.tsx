@@ -10,7 +10,6 @@ import {
   Moon,
   RotateCw,
   X,
-  Lock,
   Crown,
   Share2,
 } from "lucide-react";
@@ -997,9 +996,6 @@ export default function ArchAuditApp() {
             {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
           </button>
           <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-[rgb(var(--muted))]">
-            {!isPro && (
-              <Lock size={10} data-testid="model-lock" aria-hidden="true" />
-            )}
             <select
               value={model}
               onChange={(e) => {
