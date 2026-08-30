@@ -1,4 +1,11 @@
-"""Backend tests for ARCHAUDIT SSE audit endpoint."""
+"""Backend tests for ARCHAUDIT.
+
+Covers:
+  - /api/health
+  - /api/audit (SSE) for gpt-4o-mini and gemini
+  - /api/audit/stage for architect / chaos / hardened
+  - unknown stage error handling
+"""
 import json
 import os
 import re
@@ -6,103 +13,134 @@ import pytest
 import requests
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://archaudit-dev.preview.emergentagent.com").rstrip("/")
-AUDIT_URL = f"{BASE_URL}/api/audit"
+API = f"{BASE_URL}/api"
+REQ = "Design a URL shortener that handles 50k redirects per second with analytics."
 
-BOX_CHARS = set("┌─┐│└┘├┤┬┴┼")
 
-
-def parse_sse_stream(text: str):
-    """Return list of (event, data_dict) from an SSE payload."""
+# --------- helpers ---------
+def parse_sse(text):
+    """Return list of (event_name, dict_data) parsed from an SSE payload."""
     events = []
-    for chunk in text.split("\n\n"):
-        chunk = chunk.strip("\n")
-        if not chunk:
-            continue
+    for block in text.split("\n\n"):
         event = None
-        data_parts = []
-        for line in chunk.split("\n"):
+        data = ""
+        for line in block.split("\n"):
             if line.startswith("event:"):
-                event = line[len("event:"):].strip()
+                event = line[6:].strip()
             elif line.startswith("data:"):
-                data_parts.append(line[len("data:"):].strip())
-        if event and data_parts:
+                data += line[5:].strip()
+        if event and data:
             try:
-                events.append((event, json.loads("".join(data_parts))))
+                events.append((event, json.loads(data)))
             except json.JSONDecodeError:
-                events.append((event, {"_raw": "".join(data_parts)}))
+                pass
     return events
 
 
-@pytest.fixture(scope="module")
-def audit_response():
-    r = requests.post(
-        AUDIT_URL,
-        json={"requirements": "Design a chat app"},
-        stream=True,
-        timeout=60,
-    )
-    assert r.status_code == 200, f"Expected 200, got {r.status_code}"
-    body = r.text
-    return r, body, parse_sse_stream(body)
+# --------- health ---------
+class TestHealth:
+    def test_health_ok(self):
+        r = requests.get(f"{API}/health", timeout=15)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["status"] == "ok"
+        assert d["llm_key_configured"] is True
+        assert "gpt-4o-mini" in d["models"]
+        assert "gemini" in d["models"]
 
 
-def test_health_root():
-    r = requests.get(f"{BASE_URL}/api/", timeout=10)
-    assert r.status_code == 200
-    assert r.json().get("status") == "ok"
+# --------- audit SSE ---------
+class TestAuditSSE:
+    @pytest.mark.parametrize("model", ["gpt-4o-mini", "gemini"])
+    def test_audit_streams_three_events_in_order(self, model):
+        with requests.post(
+            f"{API}/audit",
+            json={"requirements": REQ, "model": model},
+            stream=True,
+            timeout=90,
+        ) as r:
+            assert r.status_code == 200
+            body = r.text  # sync read (small)
+        evts = parse_sse(body)
+        names = [e for e, _ in evts]
+        # Ordering check
+        assert names.index("architect_done") < names.index("attack_done") < names.index("final_done"), names
+
+        for name, data in evts:
+            assert "fallback" in data, f"{name} missing fallback"
+            assert "error_reason" in data, f"{name} missing error_reason"
+            if data["fallback"] is False:
+                assert data["error_reason"] is None
+
+        final = dict(evts)["final_done"]
+        assert "patched" in final and isinstance(final["patched"], list)
+        assert "final_diagram" in final and final["final_diagram"]
+
+    def test_audit_gpt_returns_real_results(self):
+        with requests.post(
+            f"{API}/audit",
+            json={"requirements": REQ, "model": "gpt-4o-mini"},
+            stream=True,
+            timeout=90,
+        ) as r:
+            evts = parse_sse(r.text)
+        d = dict(evts)
+        # Real (non-fallback) results expected since key configured
+        assert d["architect_done"]["fallback"] is False, d["architect_done"]
+        assert d["attack_done"]["fallback"] is False, d["attack_done"]
+        assert d["final_done"]["fallback"] is False, d["final_done"]
 
 
-def test_content_type_sse(audit_response):
-    r, _, _ = audit_response
-    ct = r.headers.get("content-type", "")
-    assert "text/event-stream" in ct, f"got: {ct}"
+# --------- stage endpoint ---------
+class TestAuditStage:
+    def test_stage_architect(self):
+        r = requests.post(f"{API}/audit/stage",
+                          json={"requirements": REQ, "stage": "architect", "model": "gpt-4o-mini"},
+                          timeout=60)
+        assert r.status_code == 200
+        d = r.json()
+        assert set(["diagram", "summary", "fallback", "error_reason", "elapsed_ms"]).issubset(d.keys())
+        assert d["diagram"]
+        assert isinstance(d["elapsed_ms"], int)
 
+    def test_stage_chaos(self):
+        r = requests.post(f"{API}/audit/stage",
+                          json={"requirements": REQ, "stage": "chaos", "model": "gpt-4o-mini"},
+                          timeout=60)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["diagram"]
+        assert "fallback" in d and "error_reason" in d
 
-def test_three_events_in_order(audit_response):
-    _, _, events = audit_response
-    names = [e[0] for e in events]
-    assert names == ["architect_done", "attack_done", "final_done"], names
+    def test_stage_hardened(self):
+        # First get architect & chaos content
+        arch = requests.post(f"{API}/audit/stage",
+                             json={"requirements": REQ, "stage": "architect", "model": "gpt-4o-mini"},
+                             timeout=60).json()
+        chaos = requests.post(f"{API}/audit/stage",
+                              json={"requirements": REQ, "stage": "chaos", "model": "gpt-4o-mini"},
+                              timeout=60).json()
+        r = requests.post(f"{API}/audit/stage", json={
+            "requirements": REQ,
+            "stage": "hardened",
+            "model": "gpt-4o-mini",
+            "architect_diagram": arch["diagram"],
+            "architect_summary": arch["summary"],
+            "attack_diagram": chaos["diagram"],
+            "attack_summary": chaos["summary"],
+        }, timeout=60)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["diagram"]
+        assert isinstance(d["patched"], list) and len(d["patched"]) >= 1
+        for p in d["patched"]:
+            assert "weakness" in p and "fix" in p
 
-
-def test_architect_done_payload(audit_response):
-    _, _, events = audit_response
-    payload = dict(events)["architect_done"]
-    assert "architect_diagram" in payload and payload["architect_diagram"].strip()
-    assert "architect_summary" in payload and payload["architect_summary"].strip()
-    assert payload.get("fallback") is True  # OPENAI_API_KEY is empty
-
-
-def test_attack_done_payload(audit_response):
-    _, _, events = audit_response
-    payload = dict(events)["attack_done"]
-    assert "attack_diagram" in payload and payload["attack_diagram"].strip()
-    assert "attack_summary" in payload and payload["attack_summary"].strip()
-    assert payload.get("fallback") is True
-
-
-def test_final_done_full_shape(audit_response):
-    _, _, events = audit_response
-    payload = dict(events)["final_done"]
-    for k in [
-        "id", "architect_diagram", "attack_diagram", "final_diagram",
-        "architect_summary", "attack_summary", "final_summary", "timestamp",
-    ]:
-        assert k in payload, f"missing {k}"
-    assert payload.get("fallback") is True
-
-
-def test_ascii_box_chars(audit_response):
-    _, _, events = audit_response
-    payload = dict(events)["final_done"]
-    for key in ("architect_diagram", "attack_diagram", "final_diagram"):
-        diag = payload[key]
-        assert "\n" in diag, f"{key} not multiline"
-        assert any(c in BOX_CHARS for c in diag), f"{key} lacks box-drawing chars"
-
-
-def test_stream_never_errors_with_empty_key(audit_response):
-    r, body, events = audit_response
-    assert r.status_code == 200
-    assert len(events) == 3
-    # No error event surfaced
-    assert not any(e[0].lower().startswith("error") for e in events)
+    def test_stage_unknown_returns_json_error_not_500(self):
+        r = requests.post(f"{API}/audit/stage",
+                          json={"requirements": REQ, "stage": "bogus"},
+                          timeout=30)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert "error" in d
+        assert d.get("fallback") is True

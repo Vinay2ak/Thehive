@@ -11,9 +11,11 @@ from fastapi import FastAPI, APIRouter
 from fastapi.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 from dotenv import load_dotenv
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
+from openai import AsyncOpenAI
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -27,17 +29,38 @@ logger = logging.getLogger("archaudit")
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
-MODEL = "gpt-4o-mini"
-PROVIDER = "openai"
-TIMEOUT_SECONDS = 20
+MODELS = {
+    "gpt-4o-mini": ("openai", "gpt-4o-mini"),
+    "gemini": ("gemini", "gemini-2.5-flash"),
+    "nvidia": ("nvidia", "nvidia/nemotron-3-super-120b-a12b"),
+}
+DEFAULT_MODEL = "gpt-4o-mini"
+TIMEOUT_SECONDS = 25
+NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 HEARTBEAT_SECONDS = 8
 DELIM = "===SUMMARY==="
 PATCHED_DELIM = "===PATCHED==="
 BOX_CHARS = "┌─┐│└┘├┤┬┴┼"
 
 
+def resolve_model(key: Optional[str]):
+    """Map a client model key to (provider, model). Falls back to default."""
+    return MODELS.get(key or DEFAULT_MODEL, MODELS[DEFAULT_MODEL])
+
+
 class AuditRequest(BaseModel):
     requirements: str
+    model: Optional[str] = None
+
+
+class StageRequest(BaseModel):
+    requirements: str
+    stage: str
+    model: Optional[str] = None
+    architect_diagram: Optional[str] = ""
+    architect_summary: Optional[str] = ""
+    attack_diagram: Optional[str] = ""
+    attack_summary: Optional[str] = ""
 
 
 # ---------------------------------------------------------------------------
@@ -241,56 +264,108 @@ def split_arbiter(text: str):
     return diagram, summary, _parse_patched(patched_part)
 
 
-async def call_agent(system_message: str, user_text: str, stage: str):
-    """Call the LLM via Emergent Universal key. Returns raw text or None on failure."""
+async def call_agent(system_message: str, user_text: str, stage: str, provider: str, model: str):
+    """Call the LLM. OpenAI/Gemini go via the Emergent Universal key; NVIDIA goes
+    directly to NVIDIA NIM (OpenAI-compatible) with the user's NVIDIA_API_KEY.
+
+    Returns (text, reason). text is None on failure; reason classifies the
+    failure as one of: 'key_missing' | 'auth' | 'rate_limit' | 'timeout' | 'error'.
+    On success reason is None.
+    """
+    if provider == "nvidia":
+        return await _call_nvidia(system_message, user_text, stage, model)
+
     api_key = os.environ.get("EMERGENT_LLM_KEY")
     if not api_key:
         logger.warning("[%s] EMERGENT_LLM_KEY missing — using deterministic mock.", stage)
-        return None
+        return None, "key_missing"
     try:
         chat = LlmChat(
             api_key=api_key,
             session_id=str(uuid.uuid4()),
             system_message=system_message,
-        ).with_model(PROVIDER, MODEL)
-        return await asyncio.wait_for(
+        ).with_model(provider, model)
+        text = await asyncio.wait_for(
             chat.send_message(UserMessage(text=user_text)),
             timeout=TIMEOUT_SECONDS,
         )
+        return text, None
     except asyncio.TimeoutError:
         logger.error("[%s] LLM call timed out after %ss — using mock.", stage, TIMEOUT_SECONDS)
-        return None
+        return None, "timeout"
     except Exception as e:  # noqa: BLE001 - keep demo alive, never surface to UI
-        logger.error("[%s] LLM call failed: %s — using mock.", stage, e)
-        return None
+        return None, _classify_error(e, stage)
 
 
-async def resolve_stage(system_message, user_text, stage, mock_diagram, mock_summary):
-    """Run an agent and fall back to mock. Returns (diagram, summary, used_fallback)."""
-    text = await call_agent(system_message, user_text, stage)
+async def _call_nvidia(system_message: str, user_text: str, stage: str, model: str):
+    """NVIDIA NIM via the OpenAI-compatible endpoint. Uses NVIDIA_API_KEY."""
+    api_key = os.environ.get("NVIDIA_API_KEY")
+    if not api_key:
+        logger.warning("[%s] NVIDIA_API_KEY missing — using deterministic mock.", stage)
+        return None, "key_missing"
+    try:
+        client = AsyncOpenAI(base_url=NVIDIA_BASE_URL, api_key=api_key)
+        completion = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": user_text},
+                ],
+                temperature=0.4,
+                max_tokens=1400,
+                extra_body={"chat_template_kwargs": {"thinking": False}},
+            ),
+            timeout=TIMEOUT_SECONDS,
+        )
+        text = completion.choices[0].message.content if completion.choices else None
+        return (text, None) if text else (None, "error")
+    except asyncio.TimeoutError:
+        logger.error("[%s] NVIDIA call timed out after %ss — using mock.", stage, TIMEOUT_SECONDS)
+        return None, "timeout"
+    except Exception as e:  # noqa: BLE001
+        return None, _classify_error(e, stage)
+
+
+def _classify_error(e: Exception, stage: str) -> str:
+    msg = str(e).lower()
+    if any(k in msg for k in ["401", "403", "unauthor", "invalid api key", "authentication", "forbidden", "no such"]):
+        reason = "auth"
+    elif any(k in msg for k in ["429", "rate limit", "rate_limit", "quota", "too many", "insufficient"]):
+        reason = "rate_limit"
+    else:
+        reason = "error"
+    logger.error("[%s] LLM call failed (%s): %s — using mock.", stage, reason, e)
+    return reason
+
+
+async def resolve_stage(system_message, user_text, stage, mock_diagram, mock_summary, provider, model):
+    """Run an agent and fall back to mock. Returns (diagram, summary, fallback, reason)."""
+    text, reason = await call_agent(system_message, user_text, stage, provider, model)
     parsed = split_response(text)
     if parsed is None:
-        return mock_diagram, mock_summary, True
+        return mock_diagram, mock_summary, True, reason or "error"
     diagram, summary = parsed
     if not summary:
         summary = mock_summary if diagram == mock_diagram else summary
-    return diagram, summary, False
+    return diagram, summary, False, None
 
 
 def sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-async def audit_event_stream(requirements: str):
+async def audit_event_stream(requirements: str, model_key: Optional[str] = None):
     queue: asyncio.Queue = asyncio.Queue()
     store: dict = {}
+    provider, model = resolve_model(model_key)
 
     async def run_stage(system_prompt, name, mock_diagram, mock_summary):
         t0 = time.monotonic()
-        diagram, summary, fallback = await resolve_stage(
-            system_prompt, requirements, name, mock_diagram, mock_summary,
+        diagram, summary, fallback, reason = await resolve_stage(
+            system_prompt, requirements, name, mock_diagram, mock_summary, provider, model,
         )
-        return diagram, summary, fallback, int((time.monotonic() - t0) * 1000)
+        return diagram, summary, fallback, reason, int((time.monotonic() - t0) * 1000)
 
     async def orchestrate():
         try:
@@ -305,21 +380,23 @@ async def audit_event_stream(requirements: str):
             )
 
             # ...but emit in a FIXED order so columns always fill v1.0 -> v1.1.
-            arch_diagram, arch_summary, arch_fb, arch_ms = await arch_task
+            arch_diagram, arch_summary, arch_fb, arch_reason, arch_ms = await arch_task
             store["architect"] = (arch_diagram, arch_summary)
             await queue.put(("architect_done", {
                 "architect_diagram": arch_diagram,
                 "architect_summary": arch_summary,
                 "fallback": arch_fb,
+                "error_reason": arch_reason,
                 "elapsed_ms": arch_ms,
             }))
 
-            att_diagram, att_summary, att_fb, att_ms = await attack_task
+            att_diagram, att_summary, att_fb, att_reason, att_ms = await attack_task
             store["attack"] = (att_diagram, att_summary)
             await queue.put(("attack_done", {
                 "attack_diagram": att_diagram,
                 "attack_summary": att_summary,
                 "fallback": att_fb,
+                "error_reason": att_reason,
                 "elapsed_ms": att_ms,
             }))
 
@@ -330,16 +407,20 @@ async def audit_event_stream(requirements: str):
                 f"FAILURE MAP:\n{att_diagram}\n{att_summary}"
             )
             t0 = time.monotonic()
-            arbiter_text = await call_agent(ARBITER_SYS, arbiter_input, "final")
+            arbiter_text, arb_reason = await call_agent(
+                ARBITER_SYS, arbiter_input, "final", provider, model
+            )
             parsed = split_arbiter(arbiter_text)
             if parsed is None:
                 final_diagram = MOCK_FINAL_DIAGRAM
                 final_summary = MOCK_FINAL_SUMMARY
                 patched = MOCK_FINAL_PATCHED
                 fallback = True
+                reason = arb_reason or "error"
             else:
                 final_diagram, final_summary, patched = parsed
                 fallback = False
+                reason = None
                 if not patched:
                     patched = MOCK_FINAL_PATCHED
             final_elapsed_ms = int((time.monotonic() - t0) * 1000)
@@ -357,6 +438,7 @@ async def audit_event_stream(requirements: str):
             await queue.put(("final_done", {
                 **response,
                 "fallback": fallback,
+                "error_reason": reason,
                 "elapsed_ms": final_elapsed_ms,
             }))
         except Exception as e:  # noqa: BLE001
@@ -390,10 +472,65 @@ async def root():
     return {"service": "ARCHAUDIT", "status": "ok"}
 
 
+@api_router.get("/health")
+async def health():
+    """Lightweight readiness probe — reports whether the LLM key is configured."""
+    return {
+        "status": "ok",
+        "llm_key_configured": bool(os.environ.get("EMERGENT_LLM_KEY")),
+        "models": list(MODELS.keys()),
+    }
+
+
+@api_router.post("/audit/stage")
+async def audit_stage(req: StageRequest):
+    """Re-run a single stage in isolation (used by per-panel Retry)."""
+    provider, model = resolve_model(req.model)
+    reqs = req.requirements or ""
+    t0 = time.monotonic()
+
+    if req.stage == "architect":
+        d, s, fb, reason = await resolve_stage(
+            ARCHITECT_SYS, reqs, "architect",
+            MOCK_ARCHITECT_DIAGRAM, MOCK_ARCHITECT_SUMMARY, provider, model,
+        )
+        return {"diagram": d, "summary": s, "patched": [], "fallback": fb,
+                "error_reason": reason, "elapsed_ms": int((time.monotonic() - t0) * 1000)}
+
+    if req.stage == "chaos":
+        d, s, fb, reason = await resolve_stage(
+            CHAOS_SYS, reqs, "attack",
+            MOCK_ATTACK_DIAGRAM, MOCK_ATTACK_SUMMARY, provider, model,
+        )
+        return {"diagram": d, "summary": s, "patched": [], "fallback": fb,
+                "error_reason": reason, "elapsed_ms": int((time.monotonic() - t0) * 1000)}
+
+    if req.stage == "hardened":
+        arbiter_input = (
+            f"REQUIREMENTS:\n{reqs}\n\n"
+            f"PROPOSED ARCHITECTURE:\n{req.architect_diagram}\n{req.architect_summary}\n\n"
+            f"FAILURE MAP:\n{req.attack_diagram}\n{req.attack_summary}"
+        )
+        text, arb_reason = await call_agent(ARBITER_SYS, arbiter_input, "final", provider, model)
+        parsed = split_arbiter(text)
+        ms = int((time.monotonic() - t0) * 1000)
+        if parsed is None:
+            return {"diagram": MOCK_FINAL_DIAGRAM, "summary": MOCK_FINAL_SUMMARY,
+                    "patched": MOCK_FINAL_PATCHED, "fallback": True,
+                    "error_reason": arb_reason or "error", "elapsed_ms": ms}
+        d, s, patched = parsed
+        if not patched:
+            patched = MOCK_FINAL_PATCHED
+        return {"diagram": d, "summary": s, "patched": patched, "fallback": False,
+                "error_reason": None, "elapsed_ms": ms}
+
+    return {"error": "unknown stage", "error_reason": "error", "fallback": True}
+
+
 @api_router.post("/audit")
 async def audit(req: AuditRequest):
     return StreamingResponse(
-        audit_event_stream(req.requirements or ""),
+        audit_event_stream(req.requirements or "", req.model),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

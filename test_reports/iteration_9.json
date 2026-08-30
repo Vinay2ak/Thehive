@@ -1,0 +1,30 @@
+{
+  "summary": "Verified ARCHAUDIT hardening pass + new model picker. Backend: 7/8 pytest cases pass (health, gpt-4o-mini SSE ordering + real results, /audit/stage architect/chaos/hardened, unknown stage returns JSON error not 500). 1 flaky FAIL: gemini /api/audit SSE stream is truncated at ~60s BEFORE final_done event when the gemini arbiter call is slow — proxy/ingress appears to close the streaming connection at ~60s. Verified via raw curl: response ends with 2 keep-alive heartbeat comments and 0 final_done event when total time approaches 60s. Frontend @1920x1080: app loads, model-select shows gpt-4o-mini + gemini, empty-spec click triggers spec-error (button NOT disabled when empty, IS disabled while running — double-click guarded), full audit with gpt-4o-mini populates all 3 columns with real (fallback=false) results in ~15s, verdict pills + copy buttons present on all 3 columns, copy shows 'Copied' state, switching model after run preserves loaded results, export-report-button disabled initially and enabled after run, download triggers archaudit-report-*.md. Gemini full run also succeeded end-to-end in browser (all 3 loaded, no fallback banners, 0 console errors) — so the ~60s truncation is intermittent (depends on gemini arbiter latency). No unhandled promise rejections or console errors during a full run.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/audit (model=gemini)", "issue": "SSE stream is closed at ~60s while gemini arbiter is still running, so final_done event is never emitted to the client. Reproducible via pytest + raw curl when arbiter takes >~20s after attack_done. Root cause almost certainly an upstream ingress/proxy read/idle timeout (~60s) on streaming responses; the app's own TIMEOUT_SECONDS=45 wouldn't produce this shape (it would emit final_done with fallback=true). Frontend then marks hardened panel as 'error' (fallback in executeAudit's stream-end branch). Mitigation options: (a) run arbiter concurrently with architect+chaos so total wall clock is bounded by max(stage_latency) instead of sum; (b) shorten the arbiter TIMEOUT_SECONDS for gemini and rely on mock fallback; (c) emit more frequent flushes (already have 8s heartbeat, so ingress read timeout > 60s isn't idle — it may be a total-streaming-duration cap)."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Investigate the ~60s streaming cap on the gemini path. Recommended fix: run the arbiter concurrently or with a shorter timeout, OR fall back to /audit/stage-style non-streaming for slow paths, so final_done always reaches the client."
+  ],
+  "critical_code_review_comments": [
+    "server.py: arbiter runs sequentially after attack_done (~40-50s gemini), making total wall clock time > 60s and vulnerable to ingress streaming timeouts. Consider concurrent scheduling.",
+    "server.py call_agent(): all LLM errors are collapsed silently into deterministic mocks. The 'error_reason' surfacing to SSE is good, but consider distinguishing 'stream_truncated' as a client-observable state — right now the frontend marks it as generic 'error' (no reason) when the connection dies mid-stream.",
+    "App.tsx is 877 lines — should be split (StageColumn + SSE reader + audio helpers into modules).",
+    "Model options are duplicated in frontend MODEL_OPTIONS and backend MODELS — ideally frontend should read models list from /api/health (already returned)."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "87.5% (7/8 pytest cases; the 1 fail is an intermittent gemini SSE truncation)", "frontend": "100% (all 14 review-request criteria verified)"},
+  "seed_data_creation": "None (stateless app).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "backend_test.py has 8 pytest cases at /app/backend/tests/. Run with: pytest /app/backend/tests/backend_test.py -v. The gemini SSE full-stream test is FLAKY — it depends on gemini arbiter latency and hits an apparent ~60s ingress streaming cap. Requirements input is data-testid=requirements-input, columns are column-architect / column-chaos / column-hardened with -loaded / -loading / -error / -verdict / -copy / -fallback-banner / -retry / -diagram / -summary / -patched suffixes. Health at /api/health returns {status,llm_key_configured,models}. Frontend url from REACT_APP_BACKEND_URL.",
+  "rca of the issue": "Gemini /api/audit SSE final_done missing: architect_done arrives ~30-40s in, attack_done ~40s, then sequential arbiter call adds another 15-45s pushing total past ~60s. Upstream ingress (Cloudflare / kube ingress) appears to enforce a ~60s streaming cap, terminating the connection after 8s-heartbeats keep it open past that mark. On the gpt-4o-mini path stages complete in ~2s each so total is well under 60s and final_done is always delivered. Reproducible with: curl -N -X POST $BACKEND/api/audit -d '{\"requirements\":\"...\",\"model\":\"gemini\"}' — observe stream ending after ~60s with two 'keep-alive' comments and no final_done. Recommended mitigation: parallelize arbiter with architect+chaos (Arbiter can consume partial results, or use single-shot combined prompt), OR reduce Arbiter TIMEOUT_SECONDS to keep total under 55s."
+}

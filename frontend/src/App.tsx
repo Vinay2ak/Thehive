@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Volume2,
-  VolumeX,
   Download,
   Copy,
   Check,
@@ -10,6 +8,8 @@ import {
   CheckCircle2,
   Sun,
   Moon,
+  RotateCw,
+  X,
 } from "lucide-react";
 import { DiagramCanvas } from "@/DiagramCanvas";
 
@@ -42,6 +42,7 @@ interface StageState {
   fallback: boolean;
   patched: PatchedItem[];
   elapsedMs?: number;
+  errorReason?: string;
 }
 
 const EMPTY_STAGE: StageState = {
@@ -52,15 +53,17 @@ const EMPTY_STAGE: StageState = {
   patched: [],
 };
 
-const DEFAULT_REQUIREMENTS =
-  "Design a URL shortener that handles 50k redirects/sec,\n" +
-  "with custom aliases, analytics, and 99.99% uptime.";
-
 const COLUMNS: Record<string, { accent: string; verdict: string }> = {
   architect: { accent: "#5B8DEF", verdict: "Baseline" },
   chaos: { accent: "#E8A33D", verdict: "Risks Found" },
   hardened: { accent: "#34D399", verdict: "Verified" },
 };
+
+const MODEL_OPTIONS: { value: string; label: string }[] = [
+  { value: "gpt-4o-mini", label: "gpt-4o-mini" },
+  { value: "gemini", label: "gemini-2.5-flash" },
+  { value: "nvidia", label: "nvidia-nemotron-super" },
+];
 
 const CHAOS = "#E8A33D";
 const MINT = "#34D399";
@@ -77,25 +80,38 @@ function StageColumn(props: {
   verdict: string;
   state: StageState;
   testid: string;
+  onRetry: () => void;
 }) {
-  const { title, accent, verdict, state, testid } = props;
+  const { title, accent, verdict, state, testid, onRetry } = props;
   const accentVars = { "--accent": accent } as React.CSSProperties;
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   const copyDiagram = async () => {
     const text = state.diagram || "";
+    let ok = false;
     try {
       await navigator.clipboard.writeText(text);
+      ok = true;
     } catch {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      ta.remove();
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand("copy");
+        ta.remove();
+      } catch {
+        ok = false;
+      }
     }
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1400);
+    if (ok) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } else {
+      setCopyFailed(true);
+      window.setTimeout(() => setCopyFailed(false), 2000);
+    }
   };
 
   const VerdictIcon =
@@ -157,12 +173,30 @@ function StageColumn(props: {
           >
             STAGE_FAILED — SHOWING CACHED FALLBACK
           </span>
+          <button
+            onClick={onRetry}
+            data-testid={`${testid}-retry`}
+            className="ml-auto inline-flex h-5 items-center gap-1 rounded-md border px-1.5 font-sans text-[10px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF]"
+            style={{ borderColor: `${CHAOS}66`, color: CHAOS }}
+          >
+            <RotateCw size={10} />
+            Retry
+          </button>
         </div>
       )}
 
       {/* Toolbar: copy (own row) */}
       {state.status === "loaded" && (
-        <div className="flex shrink-0 justify-end border-b border-[rgb(var(--border))] px-3 py-1.5">
+        <div className="flex shrink-0 items-center justify-end gap-2 border-b border-[rgb(var(--border))] px-3 py-1.5">
+          {copyFailed && (
+            <span
+              className="font-sans text-[10px] font-medium"
+              style={{ color: CHAOS }}
+              data-testid={`${testid}-copy-error`}
+            >
+              copy not supported here
+            </span>
+          )}
           <button
             onClick={copyDiagram}
             data-testid={`${testid}-copy`}
@@ -209,12 +243,22 @@ function StageColumn(props: {
 
         {state.status === "error" && (
           <div
-            className="flex h-full items-center justify-center px-2 text-center"
+            className="flex h-full flex-col items-center justify-center gap-3 px-2 text-center"
             data-testid={`${testid}-error`}
           >
+            <AlertTriangle size={20} style={{ color: CHAOS }} />
             <span className="font-sans text-xs" style={{ color: CHAOS }}>
-              Stage failed — showing cached fallback
+              Stage failed to respond
             </span>
+            <button
+              onClick={onRetry}
+              data-testid={`${testid}-retry`}
+              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 font-sans text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF]"
+              style={{ borderColor: `${CHAOS}66`, color: CHAOS }}
+            >
+              <RotateCw size={12} />
+              Retry
+            </button>
           </div>
         )}
 
@@ -282,12 +326,14 @@ function StageColumn(props: {
 }
 
 export default function ArchAuditApp() {
-  const [requirements, setRequirements] = useState<string>(DEFAULT_REQUIREMENTS);
+  const [requirements, setRequirements] = useState<string>("");
   const [running, setRunning] = useState<boolean>(false);
   const [architect, setArchitect] = useState<StageState>(EMPTY_STAGE);
   const [chaos, setChaos] = useState<StageState>(EMPTY_STAGE);
   const [hardened, setHardened] = useState<StageState>(EMPTY_STAGE);
-  const [muted, setMuted] = useState<boolean>(false);
+  const [model, setModel] = useState<string>("gpt-4o-mini");
+  const [specError, setSpecError] = useState<string>("");
+  const [keyBanner, setKeyBanner] = useState<string | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">(
     () => (localStorage.getItem("archaudit-theme") as "dark" | "light") || "dark",
   );
@@ -298,63 +344,112 @@ export default function ArchAuditApp() {
     localStorage.setItem("archaudit-theme", theme);
   }, [theme]);
 
+  // Health check on load — never crash the UI if the LLM key is unavailable.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API}/health`);
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!cancelled && d && d.llm_key_configured === false) {
+          setKeyBanner(
+            "LLM key not configured — audits will show cached fallback results only.",
+          );
+        }
+      } catch {
+        // Health probe failed (backend unreachable) — stay silent; audit calls
+        // will surface their own per-panel errors with Retry.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const bannerForReason = (reason?: string): string | null => {
+    if (reason === "key_missing")
+      return "LLM key not configured — showing cached fallback results.";
+    if (reason === "auth")
+      return "LLM key was rejected (auth error) — showing cached fallback results. Check the key in your deployment.";
+    if (reason === "rate_limit")
+      return "LLM account rate-limited — showing cached fallback results. Try again shortly or top up your balance.";
+    return null;
+  };
+
   const ensureAudio = () => {
-    if (!audioRef.current) {
-      const Ctx =
-        window.AudioContext || (window as any).webkitAudioContext;
-      if (Ctx) audioRef.current = new Ctx();
-    }
-    if (audioRef.current && audioRef.current.state === "suspended") {
-      audioRef.current.resume();
+    try {
+      if (!audioRef.current) {
+        const Ctx =
+          window.AudioContext || (window as any).webkitAudioContext;
+        if (Ctx) audioRef.current = new Ctx();
+      }
+      if (audioRef.current && audioRef.current.state === "suspended") {
+        audioRef.current.resume();
+      }
+    } catch {
+      // AudioContext unavailable / blocked — sound is optional, never fatal.
     }
     return audioRef.current;
   };
 
   // Subtle synthesized "stamp thud" — a low body + a short transient click.
   const playThud = () => {
-    if (muted) return;
-    const ctx = audioRef.current;
-    if (!ctx) return;
-    const t = ctx.currentTime;
+    try {
+      const ctx = audioRef.current;
+      if (!ctx) return;
+      const t = ctx.currentTime;
 
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = "triangle";
-    osc.frequency.setValueAtTime(150, t);
-    osc.frequency.exponentialRampToValueAtTime(55, t + 0.12);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.2, t + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
-    osc.connect(g).connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + 0.2);
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(150, t);
+      osc.frequency.exponentialRampToValueAtTime(55, t + 0.12);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.2, t + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+      osc.connect(g).connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.2);
 
-    const buffer = ctx.createBuffer(
-      1,
-      Math.floor(ctx.sampleRate * 0.05),
-      ctx.sampleRate,
-    );
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < data.length; i++) {
-      data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+      const buffer = ctx.createBuffer(
+        1,
+        Math.floor(ctx.sampleRate * 0.05),
+        ctx.sampleRate,
+      );
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+      }
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+      const ng = ctx.createGain();
+      ng.gain.setValueAtTime(0.11, t);
+      ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+      const hp = ctx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 1200;
+      noise.connect(hp).connect(ng).connect(ctx.destination);
+      noise.start(t);
+      noise.stop(t + 0.05);
+    } catch {
+      // Autoplay policy / audio failure — verdict flow must continue regardless.
     }
-    const noise = ctx.createBufferSource();
-    noise.buffer = buffer;
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(0.11, t);
-    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
-    const hp = ctx.createBiquadFilter();
-    hp.type = "highpass";
-    hp.frequency.value = 1200;
-    noise.connect(hp).connect(ng).connect(ctx.destination);
-    noise.start(t);
-    noise.stop(t + 0.05);
   };
 
-  const canExport = hardened.status === "loaded";
+  const canExport =
+    architect.status === "loaded" ||
+    chaos.status === "loaded" ||
+    hardened.status === "loaded";
 
   const buildReport = (): string => {
     const block = (title: string, verdict: string, s: StageState) => {
+      if (s.status !== "loaded") {
+        return (
+          `## ${title} — ${verdict}\n\n` +
+          "```\nUNAVAILABLE — this stage did not complete successfully.\n```\n\n"
+        );
+      }
       const meta = [
         s.elapsedMs != null ? formatElapsed(s.elapsedMs) : null,
         s.fallback ? "CACHED_FALLBACK" : null,
@@ -372,10 +467,12 @@ export default function ArchAuditApp() {
       }
       return out + "\n";
     };
+    const modelLabel =
+      MODEL_OPTIONS.find((m) => m.value === model)?.label || model;
     return (
       "# ARCHAUDIT — Inspection Report\n\n" +
       `Generated: ${new Date().toISOString()}\n` +
-      "Model: gemma-4-31b (NVIDIA NIM) · stateless\n\n" +
+      `Model: ${modelLabel} (Emergent Universal Key) · stateless\n\n` +
       `## Requirements\n\n${requirements}\n\n` +
       block("v1.0 ARCHITECT", COLUMNS.architect.verdict, architect) +
       block("v1.1 CHAOS_INJECTION", COLUMNS.chaos.verdict, chaos) +
@@ -385,15 +482,20 @@ export default function ArchAuditApp() {
 
   const exportReport = () => {
     if (!canExport) return;
-    const blob = new Blob([buildReport()], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `archaudit-report-${Date.now()}.md`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([buildReport()], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `archaudit-report-${Date.now()}.md`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      // Blob/download unsupported — surface via the key banner area.
+      setKeyBanner("Report export is not supported in this browser.");
+    }
   };
 
   const lineNumbers = useMemo(() => {
@@ -404,6 +506,9 @@ export default function ArchAuditApp() {
   }, [requirements]);
 
   const applyEvent = (event: string, payload: any) => {
+    const reason = payload.error_reason as string | undefined;
+    const banner = bannerForReason(reason);
+    if (banner) setKeyBanner(banner);
     if (event === "architect_done") {
       setArchitect({
         status: "loaded",
@@ -412,6 +517,7 @@ export default function ArchAuditApp() {
         fallback: Boolean(payload.fallback),
         patched: [],
         elapsedMs: payload.elapsed_ms,
+        errorReason: reason,
       });
     } else if (event === "attack_done") {
       setChaos({
@@ -421,6 +527,7 @@ export default function ArchAuditApp() {
         fallback: Boolean(payload.fallback),
         patched: [],
         elapsedMs: payload.elapsed_ms,
+        errorReason: reason,
       });
     } else if (event === "final_done") {
       const res = payload as AuditResponse & { fallback?: boolean; elapsed_ms?: number };
@@ -431,13 +538,63 @@ export default function ArchAuditApp() {
         fallback: Boolean(res.fallback),
         patched: Array.isArray(res.patched) ? res.patched : [],
         elapsedMs: res.elapsed_ms,
+        errorReason: reason,
       });
     }
     playThud();
   };
 
+  // Per-panel retry — re-runs a single stage in isolation via /audit/stage.
+  // The other two panels' results are never touched.
+  const retryStage = async (stage: "architect" | "chaos" | "hardened") => {
+    const setter =
+      stage === "architect" ? setArchitect : stage === "chaos" ? setChaos : setHardened;
+    if (!requirements.trim()) {
+      setSpecError("Enter a spec before retrying.");
+      return;
+    }
+    setter({ ...EMPTY_STAGE, status: "loading" });
+    ensureAudio();
+    try {
+      const body: any = { requirements, stage, model };
+      if (stage === "hardened") {
+        body.architect_diagram = architect.diagram;
+        body.architect_summary = architect.summary;
+        body.attack_diagram = chaos.diagram;
+        body.attack_summary = chaos.summary;
+      }
+      const resp = await fetch(`${API}/audit/stage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const d = await resp.json();
+      const reason = d.error_reason as string | undefined;
+      const banner = bannerForReason(reason);
+      if (banner) setKeyBanner(banner);
+      setter({
+        status: "loaded",
+        diagram: d.diagram || "",
+        summary: d.summary || "",
+        fallback: Boolean(d.fallback),
+        patched: Array.isArray(d.patched) ? d.patched : [],
+        elapsedMs: d.elapsed_ms,
+        errorReason: reason,
+      });
+      playThud();
+    } catch {
+      setter({ ...EMPTY_STAGE, status: "error", errorReason: "error" });
+    }
+  };
+
   const executeAudit = async () => {
-    if (running || !requirements.trim()) return;
+    if (running) return; // ignore repeat / double clicks while running
+    if (!requirements.trim()) {
+      setSpecError("Enter a system spec to run an audit.");
+      return;
+    }
+    setSpecError("");
     setRunning(true);
     ensureAudio();
     const loading: StageState = { ...EMPTY_STAGE, status: "loading" };
@@ -449,7 +606,7 @@ export default function ArchAuditApp() {
       const resp = await fetch(`${API}/audit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requirements }),
+        body: JSON.stringify({ requirements, model }),
       });
       if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
 
@@ -530,28 +687,50 @@ export default function ArchAuditApp() {
           >
             {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
           </button>
-          <button
-            onClick={() => setMuted((m) => !m)}
-            data-testid="sound-toggle"
-            aria-label={muted ? "Unmute stamp sound" : "Mute stamp sound"}
-            title={muted ? "Sound off" : "Sound on"}
-            className="flex h-6 w-6 items-center justify-center rounded-full text-[rgb(var(--muted))] transition-colors hover:bg-[rgb(var(--muted)/0.15)] hover:text-[rgb(var(--text))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF]"
-          >
-            {muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
-          </button>
           <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-[rgb(var(--muted))]">
-            <span
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ background: MINT, boxShadow: `0 0 6px ${MINT}` }}
-              aria-hidden="true"
-            />
-            gemma-4-31b
-          </span>
-          <span className="rounded-full border border-[#5B8DEF]/40 bg-[#5B8DEF]/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-[#5B8DEF]">
-            stateless
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              data-testid="model-select"
+              aria-label="Select model for the next audit"
+              title="Model used for the next Execute Audit run"
+              className="cursor-pointer appearance-none bg-transparent font-mono text-[10px] uppercase tracking-widest text-[rgb(var(--muted))] outline-none transition-colors hover:text-[rgb(var(--text))] focus-visible:text-[rgb(var(--text))]"
+            >
+              {MODEL_OPTIONS.map((m) => (
+                <option
+                  key={m.value}
+                  value={m.value}
+                  className="bg-[rgb(var(--panel))] text-[rgb(var(--text))]"
+                >
+                  {m.label}
+                </option>
+              ))}
+            </select>
           </span>
         </div>
       </header>
+
+      {/* Top-level banner — key/account issues. UI stays fully usable. */}
+      {keyBanner && (
+        <div
+          className="flex shrink-0 items-center gap-2 border-b px-4 py-2"
+          style={{ background: `${CHAOS}14`, borderColor: `${CHAOS}44` }}
+          data-testid="key-banner"
+        >
+          <AlertTriangle size={13} style={{ color: CHAOS }} className="shrink-0" />
+          <span className="font-sans text-[11px] font-medium" style={{ color: CHAOS }}>
+            {keyBanner}
+          </span>
+          <button
+            onClick={() => setKeyBanner(null)}
+            data-testid="key-banner-dismiss"
+            aria-label="Dismiss notice"
+            className="ml-auto text-[rgb(var(--muted))] transition-colors hover:text-[rgb(var(--text))]"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
 
       {/* Body */}
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
@@ -569,10 +748,6 @@ export default function ArchAuditApp() {
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col p-3">
-            <label className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[rgb(var(--muted)/0.7)]">
-              // requirements.spec
-            </label>
-
             <div className="relative flex min-h-[200px] flex-1 overflow-hidden rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--panel)/0.5)] backdrop-blur-md focus-within:ring-1 focus-within:ring-[#5B8DEF]">
               <div
                 className="relative z-10 select-none overflow-hidden border-r border-[rgb(var(--border))] bg-[rgb(var(--panel)/0.4)] px-2 py-2 text-right font-mono text-[11px] leading-relaxed text-[rgb(var(--muted)/0.4)]"
@@ -584,17 +759,30 @@ export default function ArchAuditApp() {
               </div>
               <textarea
                 value={requirements}
-                onChange={(e) => setRequirements(e.target.value)}
+                onChange={(e) => {
+                  setRequirements(e.target.value);
+                  if (specError && e.target.value.trim()) setSpecError("");
+                }}
                 spellCheck={false}
                 data-testid="requirements-input"
-                className="relative z-10 min-h-0 flex-1 resize-none bg-transparent px-3 py-2 font-mono text-[13px] leading-relaxed text-[rgb(var(--text))] caret-[#5B8DEF] outline-none placeholder:text-[rgb(var(--muted)/0.4)] focus-visible:outline-none"
+                className="relative z-10 min-h-0 flex-1 resize-none overflow-auto bg-transparent px-3 py-2 font-mono text-[13px] leading-relaxed text-[rgb(var(--text))] caret-[#5B8DEF] outline-none placeholder:text-[rgb(var(--muted)/0.4)] focus-visible:outline-none"
                 placeholder="Describe the system to audit..."
               />
             </div>
 
+            {specError && (
+              <p
+                className="mt-2 font-sans text-[11px] font-medium"
+                style={{ color: CHAOS }}
+                data-testid="spec-error"
+              >
+                {specError}
+              </p>
+            )}
+
             <button
               onClick={executeAudit}
-              disabled={running || !requirements.trim()}
+              disabled={running}
               data-testid="execute-audit-button"
               className="mt-3 shrink-0 rounded-xl border border-[rgb(var(--text)/0.2)] bg-[rgb(var(--text)/0.9)] px-4 py-3 font-sans text-xs font-bold uppercase tracking-[0.18em] text-[rgb(var(--bg))] backdrop-blur-md transition-colors duration-150 hover:bg-[rgb(var(--text))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(var(--bg))] disabled:cursor-not-allowed disabled:bg-[rgb(var(--border)/0.4)] disabled:text-[rgb(var(--muted)/0.5)]"
             >
@@ -623,6 +811,7 @@ export default function ArchAuditApp() {
               verdict={COLUMNS.architect.verdict}
               state={architect}
               testid="column-architect"
+              onRetry={() => retryStage("architect")}
             />
             <StageColumn
               columnKey="chaos"
@@ -631,6 +820,7 @@ export default function ArchAuditApp() {
               verdict={COLUMNS.chaos.verdict}
               state={chaos}
               testid="column-chaos"
+              onRetry={() => retryStage("chaos")}
             />
             <StageColumn
               columnKey="hardened"
@@ -639,6 +829,7 @@ export default function ArchAuditApp() {
               verdict={COLUMNS.hardened.verdict}
               state={hardened}
               testid="column-hardened"
+              onRetry={() => retryStage("hardened")}
             />
           </div>
         </main>
