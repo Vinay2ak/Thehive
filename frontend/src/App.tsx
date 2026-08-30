@@ -52,10 +52,6 @@ const EMPTY_STAGE: StageState = {
   patched: [],
 };
 
-const DEFAULT_REQUIREMENTS =
-  "Design a URL shortener that handles 50k redirects/sec,\n" +
-  "with custom aliases, analytics, and 99.99% uptime.";
-
 const COLUMNS: Record<string, { accent: string; verdict: string }> = {
   architect: { accent: "#5B8DEF", verdict: "Baseline" },
   chaos: { accent: "#E8A33D", verdict: "Risks Found" },
@@ -282,7 +278,7 @@ function StageColumn(props: {
 }
 
 export default function ArchAuditApp() {
-  const [requirements, setRequirements] = useState<string>(DEFAULT_REQUIREMENTS);
+  const [requirements, setRequirements] = useState<string>("");
   const [running, setRunning] = useState<boolean>(false);
   const [architect, setArchitect] = useState<StageState>(EMPTY_STAGE);
   const [chaos, setChaos] = useState<StageState>(EMPTY_STAGE);
