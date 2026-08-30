@@ -382,6 +382,7 @@ function StageColumn(props: {
 export default function ArchAuditApp() {
   const [requirements, setRequirements] = useState<string>("");
   const [running, setRunning] = useState<boolean>(false);
+  const [validating, setValidating] = useState<boolean>(false);
   const [architect, setArchitect] = useState<StageState>(EMPTY_STAGE);
   const [chaos, setChaos] = useState<StageState>(EMPTY_STAGE);
   const [hardened, setHardened] = useState<StageState>(EMPTY_STAGE);
@@ -682,12 +683,40 @@ export default function ArchAuditApp() {
   };
 
   const executeAudit = async () => {
-    if (running) return; // ignore repeat / double clicks while running
-    if (!requirements.trim()) {
+    if (running || validating) return; // ignore repeat / double clicks
+    const spec = requirements.trim();
+    if (!spec) {
       setSpecError("Enter a system spec to run an audit.");
       return;
     }
     setSpecError("");
+
+    // Lightweight pre-flight validation (reuses the selected model). Fails OPEN:
+    // any error/timeout skips the check so it can never block a real run.
+    setValidating(true);
+    let valid = true;
+    try {
+      const vr = await fetch(`${API}/validate-spec`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requirements: spec, model }),
+      });
+      if (vr.ok) {
+        const vd = await vr.json();
+        valid = vd.valid !== false;
+      }
+    } catch {
+      valid = true; // network error → fail open
+    } finally {
+      setValidating(false);
+    }
+    if (!valid) {
+      setSpecError(
+        "This doesn't look like a system to audit. Try describing what the system does, its scale, or key requirements — e.g. 'a URL shortener that handles 50k redirects/sec.'",
+      );
+      return;
+    }
+
     setRunning(true);
     ensureAudio();
     const loading: StageState = { ...EMPTY_STAGE, status: "loading" };
@@ -1119,11 +1148,15 @@ export default function ArchAuditApp() {
 
             <button
               onClick={executeAudit}
-              disabled={running}
+              disabled={running || validating}
               data-testid="execute-audit-button"
               className="mt-3 shrink-0 rounded-xl border border-[rgb(var(--text)/0.2)] bg-[rgb(var(--text)/0.9)] px-4 py-3 font-sans text-xs font-bold uppercase tracking-[0.18em] text-[rgb(var(--bg))] backdrop-blur-md transition-colors duration-150 hover:bg-[rgb(var(--text))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(var(--bg))] disabled:cursor-not-allowed disabled:bg-[rgb(var(--border)/0.4)] disabled:text-[rgb(var(--muted)/0.5)]"
             >
-              {running ? "AUDIT_RUNNING..." : "EXECUTE AUDIT"}
+              {validating
+                ? "CHECKING INPUT..."
+                : running
+                  ? "AUDIT_RUNNING..."
+                  : "EXECUTE AUDIT"}
             </button>
 
             <button

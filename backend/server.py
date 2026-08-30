@@ -53,6 +53,11 @@ class AuditRequest(BaseModel):
     model: Optional[str] = None
 
 
+class ValidateRequest(BaseModel):
+    requirements: str
+    model: Optional[str] = None
+
+
 class StageRequest(BaseModel):
     requirements: str
     stage: str
@@ -471,6 +476,39 @@ async def audit_event_stream(requirements: str, model_key: Optional[str] = None)
 @api_router.get("/")
 async def root():
     return {"service": "ARCHAUDIT", "status": "ok"}
+
+
+@api_router.post("/validate-spec")
+async def validate_spec(req: ValidateRequest):
+    """Lightweight YES/NO classifier: does the text describe a software system
+    to design/audit? Fails OPEN (returns valid=true) on any error/timeout so it
+    can never block a legitimate run due to its own failure."""
+    text = (req.requirements or "").strip()
+    if len(text) < 10:
+        return {"valid": False, "reason": "too_short"}
+
+    provider, model = resolve_model(req.model)
+    system_msg = "You are a strict classifier. Reply with exactly one word: YES or NO."
+    user_msg = (
+        "Does the following text describe a software system, application, or "
+        "technical architecture to design/audit (even briefly or informally)? "
+        f"Answer only YES or NO. Text: {text[:800]}"
+    )
+    try:
+        resp, err = await asyncio.wait_for(
+            call_agent(system_msg, user_msg, "validate", provider, model),
+            timeout=8,
+        )
+    except asyncio.TimeoutError:
+        return {"valid": True, "reason": "timeout"}
+    if err or not resp:
+        return {"valid": True, "reason": "check_failed"}
+
+    ans = resp.strip().upper()
+    if ans.startswith("NO"):
+        return {"valid": False, "reason": "classified_no"}
+    # YES or anything ambiguous → allow (fail open toward running the audit).
+    return {"valid": True, "reason": "classified_yes"}
 
 
 @api_router.get("/health")
