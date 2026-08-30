@@ -774,76 +774,125 @@ export default function ArchAuditApp() {
   };
 
   const buildShareCard = (): string => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 1200;
-    canvas.height = 630;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("canvas unsupported");
-
     const BG = "#0B0F17";
     const PANEL = "#10151F";
     const TEXT = "#E5E7EB";
     const MUTED = "#8B96A5";
 
-    ctx.fillStyle = BG;
-    ctx.fillRect(0, 0, 1200, 630);
-    ctx.fillStyle = "#5B8DEF";
-    ctx.fillRect(0, 0, 1200, 6);
+    const stages = [
+      { title: "V1.0 ARCHITECT", s: architect, color: COLUMNS.architect.accent, verdict: COLUMNS.architect.verdict },
+      { title: "V1.1 CHAOS_INJECTION", s: chaos, color: COLUMNS.chaos.accent, verdict: COLUMNS.chaos.verdict },
+      { title: "V2.0 HARDENED", s: hardened, color: COLUMNS.hardened.accent, verdict: COLUMNS.hardened.verdict },
+    ];
 
-    // Wordmark
-    ctx.fillStyle = "#5B8DEF";
-    ctx.fillRect(64, 72, 26, 26);
-    ctx.fillStyle = TEXT;
-    ctx.font = "700 40px Inter, sans-serif";
-    ctx.textBaseline = "alphabetic";
-    ctx.fillText("ARCHAUDIT", 104, 100);
-    ctx.fillStyle = MUTED;
-    ctx.font = "500 18px 'JetBrains Mono', monospace";
-    ctx.fillText("// adversarial architecture review", 104, 128);
+    const W = 1400;
+    const PAD = 48;
+    const GAP = 24;
+    const colW = Math.floor((W - PAD * 2 - GAP * 2) / 3);
+    const innerPad = 18;
+    const textW = colW - innerPad * 2;
+    const diagFont = "11px 'JetBrains Mono', monospace";
+    const diagLH = 14;
+    const sumFont = "14px Inter, sans-serif";
+    const sumLH = 20;
+    const headerH = 210;
+    const titleBlock = 78;
 
-    // Spec headline
-    ctx.fillStyle = TEXT;
-    ctx.font = "600 34px Inter, sans-serif";
-    const lines = wrapText(ctx, (requirements || "Untitled system").trim(), 1072);
-    let y = 214;
-    lines.slice(0, 3).forEach((ln) => {
-      ctx.fillText(ln, 64, y);
-      y += 46;
+    const measure = document.createElement("canvas").getContext("2d");
+    if (!measure) throw new Error("canvas unsupported");
+    measure.font = sumFont;
+    const cols = stages.map((st) => {
+      const raw =
+        st.s.status === "loaded" && st.s.diagram
+          ? st.s.diagram
+          : st.s.status === "error"
+            ? "UNAVAILABLE — stage failed."
+            : "(no output)";
+      const diagLines = raw.split("\n");
+      const sumLines = st.s.summary ? wrapText(measure, st.s.summary, textW) : [];
+      return { ...st, diagLines, sumLines };
     });
 
-    // Three verdict badges
-    const cards = [
-      { label: "V1.0 ARCHITECT", status: COLUMNS.architect.verdict, color: COLUMNS.architect.accent },
-      { label: "V1.1 CHAOS", status: COLUMNS.chaos.verdict, color: COLUMNS.chaos.accent },
-      { label: "V2.0 HARDENED", status: COLUMNS.hardened.verdict, color: COLUMNS.hardened.accent },
-    ];
-    const cardW = 340;
-    const cardH = 150;
-    const gap = 26;
-    const cardY = 404;
-    cards.forEach((c, i) => {
-      const x = 64 + i * (cardW + gap);
+    const maxBody = Math.max(
+      ...cols.map((c) => c.diagLines.length * diagLH + 22 + c.sumLines.length * sumLH),
+    );
+    const colH = titleBlock + maxBody + innerPad;
+    const H = headerH + colH + 70;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas unsupported");
+
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#5B8DEF";
+    ctx.fillRect(0, 0, W, 6);
+
+    // Header
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "#5B8DEF";
+    ctx.fillRect(PAD, 66, 26, 26);
+    ctx.fillStyle = TEXT;
+    ctx.font = "700 40px Inter, sans-serif";
+    ctx.fillText("ARCHAUDIT", PAD + 40, 94);
+    ctx.fillStyle = MUTED;
+    ctx.font = "500 18px 'JetBrains Mono', monospace";
+    ctx.fillText("// adversarial architecture review", PAD + 40, 122);
+    ctx.fillStyle = TEXT;
+    ctx.font = "600 30px Inter, sans-serif";
+    const specLines = wrapText(ctx, (requirements || "Untitled system").trim(), W - PAD * 2);
+    ctx.fillText(specLines[0] || "", PAD, 176);
+
+    // Columns
+    const colY = headerH;
+    cols.forEach((c, i) => {
+      const x = PAD + i * (colW + GAP);
       ctx.fillStyle = PANEL;
-      roundRect(ctx, x, cardY, cardW, cardH, 16);
+      roundRect(ctx, x, colY, colW, colH, 14);
       ctx.fill();
       ctx.strokeStyle = c.color;
       ctx.lineWidth = 2;
-      roundRect(ctx, x, cardY, cardW, cardH, 16);
+      roundRect(ctx, x, colY, colW, colH, 14);
       ctx.stroke();
       ctx.fillStyle = c.color;
-      roundRect(ctx, x, cardY, cardW, 6, 3);
+      roundRect(ctx, x, colY, colW, 6, 3);
       ctx.fill();
-      ctx.fillStyle = MUTED;
-      ctx.font = "600 18px 'JetBrains Mono', monospace";
-      ctx.fillText(c.label, x + 24, cardY + 58);
+
+      ctx.fillStyle = TEXT;
+      ctx.font = "600 15px 'JetBrains Mono', monospace";
+      ctx.fillText(c.title, x + innerPad, colY + 42);
       ctx.fillStyle = c.color;
-      ctx.font = "700 30px Inter, sans-serif";
-      ctx.fillText(c.status, x + 24, cardY + 106);
+      ctx.font = "700 17px Inter, sans-serif";
+      ctx.fillText(c.verdict, x + innerPad, colY + 66);
+
+      // Clip content to the column so long lines never overflow.
+      ctx.save();
+      roundRect(ctx, x + 4, colY + titleBlock - 14, colW - 8, colH - titleBlock + 8, 8);
+      ctx.clip();
+
+      ctx.fillStyle = TEXT;
+      ctx.font = diagFont;
+      let dy = colY + titleBlock + 4;
+      c.diagLines.forEach((ln) => {
+        ctx.fillText(ln, x + innerPad, dy);
+        dy += diagLH;
+      });
+
+      dy += 14;
+      ctx.fillStyle = MUTED;
+      ctx.font = sumFont;
+      c.sumLines.forEach((ln) => {
+        ctx.fillText(ln, x + innerPad, dy);
+        dy += sumLH;
+      });
+      ctx.restore();
     });
 
     ctx.fillStyle = MUTED;
     ctx.font = "500 16px 'JetBrains Mono', monospace";
-    ctx.fillText(APP_URL || "archaudit", 64, 602);
+    ctx.fillText(APP_URL || "archaudit", PAD, H - 28);
 
     return canvas.toDataURL("image/png");
   };
