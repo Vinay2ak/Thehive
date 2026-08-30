@@ -999,15 +999,21 @@ export default function ArchAuditApp() {
             <select
               value={model}
               onChange={(e) => {
-                if (!isPro && e.target.value !== "gpt-4o-mini") return;
-                setModel(e.target.value);
+                const v = e.target.value;
+                if (!isPro && v !== "gpt-4o-mini") {
+                  // Locked model chosen by a free user → prompt upgrade,
+                  // keep GPT-4o-mini selected.
+                  goPro();
+                  return;
+                }
+                setModel(v);
               }}
               data-testid="model-select"
               aria-label="Select model for the next audit"
               title={
                 isPro
                   ? "Model used for the next Execute Audit run"
-                  : "Free tier is locked to GPT-4o-mini — Go Pro to unlock all models"
+                  : "GPT-4o-mini is free — pick a Pro model to unlock all models"
               }
               className="cursor-pointer appearance-none bg-transparent font-mono text-[10px] uppercase tracking-widest text-[rgb(var(--muted))] outline-none transition-colors hover:text-[rgb(var(--text))] focus-visible:text-[rgb(var(--text))]"
             >
@@ -1017,7 +1023,6 @@ export default function ArchAuditApp() {
                   <option
                     key={m.value}
                     value={m.value}
-                    disabled={locked}
                     className="bg-[rgb(var(--panel))] text-[rgb(var(--text))]"
                   >
                     {m.label}
@@ -1111,16 +1116,6 @@ export default function ArchAuditApp() {
             </button>
 
             <button
-              onClick={exportReport}
-              disabled={!canExport}
-              data-testid="export-report-button"
-              className="mt-2 flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--panel)/0.5)] px-4 py-2.5 font-sans text-xs font-semibold uppercase tracking-[0.18em] text-[rgb(var(--muted))] backdrop-blur-md transition-colors duration-150 hover:border-[#5B8DEF] hover:text-[rgb(var(--text))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(var(--bg))] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[rgb(var(--border))] disabled:hover:text-[rgb(var(--muted))]"
-            >
-              <Download size={13} />
-              Export Report
-            </button>
-
-            <button
               onClick={openShare}
               disabled={!canExport}
               data-testid="share-result-button"
@@ -1207,6 +1202,14 @@ export default function ArchAuditApp() {
               </p>
             )}
             <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                onClick={exportReport}
+                data-testid="export-report-button"
+                className="flex items-center gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--panel)/0.5)] px-4 py-2.5 font-sans text-xs font-semibold uppercase tracking-[0.14em] text-[rgb(var(--muted))] transition-colors hover:border-[#5B8DEF] hover:text-[rgb(var(--text))]"
+              >
+                <Download size={13} />
+                Export Report
+              </button>
               <button
                 onClick={downloadCard}
                 disabled={!shareDataUrl}
