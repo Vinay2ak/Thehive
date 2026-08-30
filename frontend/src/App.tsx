@@ -507,20 +507,25 @@ export default function ArchAuditApp() {
             // adversarial architecture review
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 rounded-full border border-[#1F2937] bg-[#10151F]/60 px-2 py-1 backdrop-blur-md">
           <button
             onClick={() => setMuted((m) => !m)}
             data-testid="sound-toggle"
             aria-label={muted ? "Unmute stamp sound" : "Mute stamp sound"}
             title={muted ? "Sound off" : "Sound on"}
-            className="flex h-6 w-6 items-center justify-center rounded-md border border-[#1F2937] text-[#8B96A5] transition-colors hover:text-[#E5E7EB] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF]"
+            className="flex h-6 w-6 items-center justify-center rounded-full text-[#8B96A5] transition-colors hover:bg-white/5 hover:text-[#E5E7EB] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF]"
           >
             {muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
           </button>
-          <span className="font-mono text-[10px] uppercase tracking-widest text-[#8B96A5]">
+          <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-[#8B96A5]">
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ background: MINT, boxShadow: `0 0 6px ${MINT}` }}
+              aria-hidden="true"
+            />
             gemma-4-31b
           </span>
-          <span className="rounded-md border border-[#1F2937] px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-[#8B96A5]/80">
+          <span className="rounded-full border border-[#5B8DEF]/40 bg-[#5B8DEF]/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-[#5B8DEF]">
             stateless
           </span>
         </div>
