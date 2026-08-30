@@ -124,7 +124,7 @@ export const DiagramCanvas: React.FC<{
   if (!nodes.length) {
     return (
       <div
-        className="font-mono text-[11px] text-[#8B96A5]"
+        className="font-mono text-[11px] text-[rgb(var(--muted))]"
         data-testid={testid}
       >
         No diagram available.
@@ -143,7 +143,7 @@ export const DiagramCanvas: React.FC<{
         className="absolute inset-0"
         width={w || 1}
         height={height}
-        style={{ pointerEvents: "none" }}
+        style={{ pointerEvents: "none", color: "rgb(var(--edge))" }}
         aria-hidden="true"
       >
         <defs>
@@ -155,7 +155,7 @@ export const DiagramCanvas: React.FC<{
             refY="3"
             orient="auto"
           >
-            <path d="M0,0 L6,3 L0,6 Z" fill="#8B96A5" />
+            <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" />
           </marker>
         </defs>
         {w > 0 &&
@@ -174,7 +174,7 @@ export const DiagramCanvas: React.FC<{
                 key={`${e.from}-${e.to}`}
                 d={d}
                 fill="none"
-                stroke="#374151"
+                stroke="currentColor"
                 strokeWidth={1.25}
                 markerEnd={`url(#arw-${mode})`}
               />
@@ -189,14 +189,14 @@ export const DiagramCanvas: React.FC<{
           return (
             <div
               key={n.id}
-              className="dg-node absolute rounded-md border bg-[#161C28] px-2.5 py-1.5 text-center font-mono text-[11px] leading-tight text-[#E5E7EB]"
+              className="dg-node absolute rounded-md border bg-[rgb(var(--panel-2))] px-2.5 py-1.5 text-center font-mono text-[11px] leading-tight text-[rgb(var(--text))]"
               style={
                 {
                   left: xOf(n),
                   top: yOf(n),
                   maxWidth: maxW,
                   transform: "translate(-50%, -50%)",
-                  borderColor: n.flagged ? accent : "#2A3342",
+                  borderColor: n.flagged ? accent : "rgb(var(--border-2))",
                   borderWidth: n.flagged ? 1.5 : 1,
                   boxShadow: n.flagged ? `0 0 0 1px ${accent}44` : "none",
                   animationDelay: `${n.level * 90}ms`,
