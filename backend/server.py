@@ -488,10 +488,14 @@ async def validate_spec(req: ValidateRequest):
         return {"valid": False, "reason": "too_short"}
 
     provider, model = resolve_model(req.model)
-    system_msg = "You are a strict classifier. Reply with exactly one word: YES or NO."
+    system_msg = "You are a lenient classifier. Reply with exactly one word: YES or NO."
     user_msg = (
-        "Does the following text describe a software system, application, or "
-        "technical architecture to design/audit (even briefly or informally)? "
+        "Decide if the text is about designing, building, or auditing ANY software "
+        "system, application, ML/AI model, data pipeline, API, or technical "
+        "architecture — even if it is brief, informal, or phrased as a question or "
+        "a 'how to' request. Answer YES if it involves any software/technical/ML "
+        "system. Answer NO ONLY if it is clearly unrelated to software or technical "
+        "systems (e.g. weather, cooking, sports, general chit-chat). "
         f"Answer only YES or NO. Text: {text[:800]}"
     )
     try:
