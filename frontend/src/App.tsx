@@ -530,7 +530,7 @@ export default function ArchAuditApp() {
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
         {/* Left sidebar — Command Terminal (30%) */}
         <aside className="flex w-full shrink-0 flex-col border-b border-[#1F2937]/60 md:w-[30%] md:border-b-0 md:border-r">
-          <div className="flex shrink-0 items-center gap-2 border-b border-[#1F2937]/50 bg-[#10151F]/70 px-3 py-2.5">
+          <div className="mx-2 mt-2 flex shrink-0 items-center gap-2 rounded-xl border border-[#1F2937] bg-[#10151F]/60 px-3 py-2.5 backdrop-blur-md">
             <span
               className="h-2 w-2 shrink-0"
               style={{ background: "#5B8DEF" }}
