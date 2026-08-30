@@ -546,9 +546,9 @@ export default function ArchAuditApp() {
               // requirements.spec
             </label>
 
-            <div className="relative flex min-h-[200px] flex-1 overflow-hidden rounded-md border border-[#1F2937] bg-[#0B0F17] focus-within:ring-1 focus-within:ring-[#5B8DEF]">
+            <div className="relative flex min-h-[200px] flex-1 overflow-hidden rounded-xl border border-[#1F2937] bg-[#10151F]/50 backdrop-blur-md focus-within:ring-1 focus-within:ring-[#5B8DEF]">
               <div
-                className="relative z-10 select-none overflow-hidden border-r border-[#1F2937] bg-[#10151F] px-2 py-2 text-right font-mono text-[11px] leading-relaxed text-[#8B96A5]/40"
+                className="relative z-10 select-none overflow-hidden border-r border-[#1F2937] bg-[#10151F]/40 px-2 py-2 text-right font-mono text-[11px] leading-relaxed text-[#8B96A5]/40"
                 aria-hidden="true"
               >
                 {lineNumbers.map((n) => (
