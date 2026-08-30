@@ -245,7 +245,7 @@ function StageColumn(props: {
                 <ul className="flex flex-col gap-2">
                   {state.patched.map((p, i) => (
                     <li
-                      key={i}
+                      key={`${p.weakness}-${i}`}
                       className="text-[12px] leading-snug"
                       data-testid={`${testid}-patched-item-${i}`}
                     >
@@ -467,7 +467,7 @@ export default function ArchAuditApp() {
           try {
             applyEvent(event, JSON.parse(data));
           } catch (e) {
-            // ignore malformed frame
+            console.warn("ARCHAUDIT: dropped malformed SSE frame", e);
           }
         }
       }

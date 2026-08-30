@@ -159,7 +159,7 @@ export const DiagramCanvas: React.FC<{
           </marker>
         </defs>
         {w > 0 &&
-          edges.map((e, i) => {
+          edges.map((e) => {
             const a = nodeById(e.from);
             const b = nodeById(e.to);
             if (!a || !b) return null;
@@ -171,7 +171,7 @@ export const DiagramCanvas: React.FC<{
             const d = `M ${x1} ${y1} L ${x1} ${ym} L ${x2} ${ym} L ${x2} ${y2}`;
             return (
               <path
-                key={i}
+                key={`${e.from}-${e.to}`}
                 d={d}
                 fill="none"
                 stroke="#374151"
