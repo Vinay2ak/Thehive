@@ -393,6 +393,7 @@ export default function ArchAuditApp() {
   });
   const [shareOpen, setShareOpen] = useState<boolean>(false);
   const [shareDataUrl, setShareDataUrl] = useState<string>("");
+  const [captionCopied, setCaptionCopied] = useState<boolean>(false);
   const [theme, setTheme] = useState<"dark" | "light">(
     () => (localStorage.getItem("archaudit-theme") as "dark" | "light") || "dark",
   );
@@ -857,6 +858,30 @@ export default function ArchAuditApp() {
     setShareOpen(true);
   };
 
+  const copyCaption = async () => {
+    const text = shareCaption();
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand("copy");
+        ta.remove();
+      } catch {
+        ok = false;
+      }
+    }
+    if (ok) {
+      setCaptionCopied(true);
+      window.setTimeout(() => setCaptionCopied(false), 1600);
+    }
+  };
+
   const downloadCard = () => {
     if (!shareDataUrl) return;
     try {
@@ -1145,6 +1170,14 @@ export default function ArchAuditApp() {
               >
                 <Download size={13} />
                 Download PNG
+              </button>
+              <button
+                onClick={copyCaption}
+                data-testid="share-copy-caption"
+                className="flex items-center gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--panel)/0.5)] px-4 py-2.5 font-sans text-xs font-semibold uppercase tracking-[0.14em] text-[rgb(var(--muted))] transition-colors hover:border-[#5B8DEF] hover:text-[rgb(var(--text))]"
+              >
+                {captionCopied ? <Check size={13} /> : <Copy size={13} />}
+                {captionCopied ? "Copied" : "Copy Caption"}
               </button>
               <button
                 onClick={shareOnX}
