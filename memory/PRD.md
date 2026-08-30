@@ -46,6 +46,15 @@ results to the frontend via SSE (emitted in fixed order architect→attack→fin
   plays by default). STATELESS badge REMOVED. `// requirements.spec` label and
   header green status dot REMOVED. Spec input starts EMPTY.
 - **Model picker** (gpt-4o-mini / gemini / nvidia).
+- **Go Pro checkout (Revenue, 2026-06)**: header "Go Pro" button opens the Stripe
+  test Payment Link (`STRIPE_PAYMENT_LINK` in App.tsx). Stripe redirect →
+  `?pro=true` sets a persisted `isPro` flag (localStorage, try/catch for private
+  mode), shows a "PRO" badge by the logo, strips the query param. Free tier is
+  gated to gpt-4o-mini (other models visible but disabled + lock icon + "· Pro").
+- **Share Card (Virality, 2026-06)**: "Share Result" button (enabled after ≥1
+  audit) renders a 1200×630 PNG via native canvas (wordmark, spec headline, 3
+  color-coded verdict badges, app URL) in an overlay with Download PNG + Share on
+  X + Share on LinkedIn intent links. Fully client-side, no new deps.
 - **Production hardening pass**: per-panel independent error + Retry; timeout →
   cached fallback; top-level key/account banner (health check + error_reason);
   empty-spec inline validation; double-click guard; export enabled when any
