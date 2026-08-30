@@ -477,7 +477,7 @@ export default function ArchAuditApp() {
           try {
             applyEvent(event, JSON.parse(data));
           } catch (e) {
-            console.warn("ARCHAUDIT: dropped malformed SSE frame", e);
+            // Malformed/partial SSE frame — safe to skip; next frame recovers.
           }
         }
       }
