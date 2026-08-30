@@ -62,7 +62,7 @@ const COLUMNS: Record<string, { accent: string; verdict: string }> = {
 const MODEL_OPTIONS: { value: string; label: string }[] = [
   { value: "gpt-4o-mini", label: "gpt-4o-mini" },
   { value: "gemini", label: "gemini-2.5-flash" },
-  { value: "nvidia", label: "nvidia-nemotron-70b" },
+  { value: "nvidia", label: "nvidia-nemotron-super" },
 ];
 
 const CHAOS = "#E8A33D";

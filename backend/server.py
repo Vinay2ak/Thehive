@@ -312,8 +312,9 @@ async def _call_nvidia(system_message: str, user_text: str, stage: str, model: s
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": user_text},
                 ],
-                temperature=0.5,
-                max_tokens=1024,
+                temperature=0.4,
+                max_tokens=1400,
+                extra_body={"chat_template_kwargs": {"thinking": False}},
             ),
             timeout=TIMEOUT_SECONDS,
         )
