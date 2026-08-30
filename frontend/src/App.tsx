@@ -569,7 +569,7 @@ export default function ArchAuditApp() {
               onClick={executeAudit}
               disabled={running || !requirements.trim()}
               data-testid="execute-audit-button"
-              className="mt-3 shrink-0 rounded-md border border-transparent bg-[#E5E7EB] px-4 py-3 font-sans text-xs font-bold uppercase tracking-[0.18em] text-[#0B0F17] transition-colors duration-150 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17] disabled:cursor-not-allowed disabled:bg-[#1F2937]/50 disabled:text-[#8B96A5]/50"
+              className="mt-3 shrink-0 rounded-xl border border-white/20 bg-white/15 px-4 py-3 font-sans text-xs font-bold uppercase tracking-[0.18em] text-white backdrop-blur-md transition-colors duration-150 hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17] disabled:cursor-not-allowed disabled:bg-[#1F2937]/40 disabled:text-[#8B96A5]/50"
             >
               {running ? "AUDIT_RUNNING..." : "EXECUTE AUDIT"}
             </button>
@@ -578,7 +578,7 @@ export default function ArchAuditApp() {
               onClick={exportReport}
               disabled={!canExport}
               data-testid="export-report-button"
-              className="mt-2 flex shrink-0 items-center justify-center gap-2 rounded-md border border-[#1F2937] bg-transparent px-4 py-2.5 font-sans text-xs font-semibold uppercase tracking-[0.18em] text-[#8B96A5] transition-colors duration-150 hover:border-[#5B8DEF] hover:text-[#E5E7EB] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#1F2937] disabled:hover:text-[#8B96A5]"
+              className="mt-2 flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[#1F2937] bg-[#10151F]/50 px-4 py-2.5 font-sans text-xs font-semibold uppercase tracking-[0.18em] text-[#8B96A5] backdrop-blur-md transition-colors duration-150 hover:border-[#5B8DEF] hover:text-[#E5E7EB] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#1F2937] disabled:hover:text-[#8B96A5]"
             >
               <Download size={13} />
               Export Report
