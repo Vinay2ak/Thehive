@@ -31,7 +31,7 @@ api_router = APIRouter(prefix="/api")
 
 MODELS = {
     "gpt-4o-mini": ("openai", "gpt-4o-mini"),
-    "gemini": ("gemini", "gemini-2.5-flash"),
+    "gemini": ("gemini", "gemini-2.5-pro"),
     "nvidia": ("nvidia", "nvidia/nemotron-3-super-120b-a12b"),
 }
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -85,7 +85,9 @@ CHAOS_SYS = (
     "Output EXACTLY in this structure and nothing else:\n"
     "1) A monospace ASCII box-diagram (a FAILURE MAP) using ONLY these characters: "
     "\u250c \u2500 \u2510 \u2502 \u2514 \u2518 \u251c \u2524 \u252c \u2534 \u253c "
-    "and arrows ->. Mark the weak points. Keep every line under 54 characters. "
+    "and arrows ->. Prefix EVERY weak-point node's label with an exclamation "
+    "mark (for example: !Primary DB) so single points of failure and bottlenecks "
+    "are clearly flagged. Keep every line under 54 characters. "
     "Max 16 lines.\n"
     f"2) Then a line containing exactly: {DELIM}\n"
     "3) Then a 2-3 sentence summary framed as a failure analysis.\n"
@@ -140,14 +142,14 @@ MOCK_ATTACK_DIAGRAM = """\
 └──────┬──────┘
        │  (all traffic)
        v
-┌──────────────┐   X SINGLE POINT
-│  API Server  │─────> OF FAILURE
-└──────┬───────┘
+┌───────────────┐
+│ !API Server   │  SPOF
+└──────┬────────┘
        │  (every write)
        v
-┌──────────────┐   X BOTTLENECK
-│  Primary DB  │─────> NO REPLICA
-└──────────────┘"""
+┌───────────────┐
+│ !Primary DB   │  BOTTLENECK
+└───────────────┘"""
 MOCK_ATTACK_SUMMARY = (
     "The single API server and un-replicated primary database are both single "
     "points of failure. Under load the database write path becomes the bottleneck "

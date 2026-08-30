@@ -1,0 +1,26 @@
+{
+  "summary": "Rebrand verification (ARCHAUDIT -> Cross-Examined) + regression audit run. Header logo data-testid=archaudit-logo now renders 'Cross-Examined' with CSS uppercase (visually 'CROSS-EXAMINED') and a scales SVG badge to its left. Browser tab title is 'Cross-Examined' (after a frontend restart to reload index.html). Full audit flow with default gpt-4o-mini populated architect/chaos/hardened panels. Share overlay renders share-card-image with 'CROSS-EXAMINED' wordmark; Export Report downloads markdown starting with '# CROSS-EXAMINED — Inspection Report'. No console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "index.html <head>", "issues": ["Meta description still reads 'ARCHAUDIT — adversarial architecture review tool'. Should update to 'Cross-Examined' for full rebrand consistency (SEO/social preview)."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Update meta description in /app/frontend/public/index.html from 'ARCHAUDIT' to 'Cross-Examined' for brand consistency (minor)."
+  ],
+  "critical_code_review_comments": [
+    "data-testid attribute is still named 'archaudit-logo' though content is now Cross-Examined; acceptable per request but worth renaming eventually.",
+    "Static index.html changes only propagate after a frontend service restart; hot reload doesn't pick up public/index.html — expected CRA behavior, not a bug."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100%"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Rebrand verified end-to-end. If future changes touch public/index.html, remember to `sudo supervisorctl restart frontend` — CRA hot reload does not rebuild index.html.",
+  "rca of the issue": "Initial curl of the site showed <title>ARCHAUDIT</title> despite source having 'Cross-Examined'. Root cause: CRA dev server caches public/index.html at boot; hot reload only affects src/. Fix: restart frontend supervisor process. After restart, title correctly served as 'Cross-Examined'."
+}

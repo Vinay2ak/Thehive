@@ -12,6 +12,7 @@ import {
   X,
   Crown,
   Share2,
+  Scale,
 } from "lucide-react";
 import { DiagramCanvas } from "@/DiagramCanvas";
 
@@ -71,9 +72,13 @@ const COLUMNS: Record<string, { accent: string; verdict: string }> = {
 
 const MODEL_OPTIONS: { value: string; label: string }[] = [
   { value: "gpt-4o-mini", label: "gpt-4o-mini" },
-  { value: "gemini", label: "gemini-2.5-flash" },
+  { value: "gemini", label: "gemini-2.5-pro" },
   { value: "nvidia", label: "nvidia-nemotron-super" },
 ];
+
+// Only these models require Pro; gpt-4o-mini and gemini are free.
+const PREMIUM_MODELS = ["nvidia"];
+const isPremiumModel = (m: string) => PREMIUM_MODELS.includes(m);
 
 const CHAOS = "#E8A33D";
 const MINT = "#34D399";
@@ -429,7 +434,7 @@ export default function ArchAuditApp() {
 
   // Free tier is locked to gpt-4o-mini; coerce if Pro is lost.
   useEffect(() => {
-    if (!isPro && model !== "gpt-4o-mini") setModel("gpt-4o-mini");
+    if (!isPro && isPremiumModel(model)) setModel("gpt-4o-mini");
   }, [isPro, model]);
 
   // Health check on load — never crash the UI if the LLM key is unavailable.
@@ -558,7 +563,7 @@ export default function ArchAuditApp() {
     const modelLabel =
       MODEL_OPTIONS.find((m) => m.value === model)?.label || model;
     return (
-      "# ARCHAUDIT — Inspection Report\n\n" +
+      "# CROSS-EXAMINED — Inspection Report\n\n" +
       `Generated: ${new Date().toISOString()}\n` +
       `Model: ${modelLabel} (Emergent Universal Key) · stateless\n\n` +
       `## Requirements\n\n${requirements}\n\n` +
@@ -753,7 +758,7 @@ export default function ArchAuditApp() {
 
   const shareCaption = (): string => {
     const spec = (requirements || "a system").split("\n")[0].slice(0, 90);
-    return `I ran "${spec}" through ARCHAUDIT — adversarial LLM architecture review: Architect → Chaos → Hardened. ${APP_URL}`;
+    return `I ran "${spec}" through Cross-Examined — adversarial LLM architecture review: Architect → Chaos → Hardened. ${APP_URL}`;
   };
 
   const shareOnX = () => {
@@ -835,7 +840,7 @@ export default function ArchAuditApp() {
     ctx.fillRect(PAD, 66, 26, 26);
     ctx.fillStyle = TEXT;
     ctx.font = "700 40px Inter, sans-serif";
-    ctx.fillText("ARCHAUDIT", PAD + 40, 94);
+    ctx.fillText("CROSS-EXAMINED", PAD + 40, 94);
     ctx.fillStyle = MUTED;
     ctx.font = "500 18px 'JetBrains Mono', monospace";
     ctx.fillText("// adversarial architecture review", PAD + 40, 122);
@@ -950,15 +955,21 @@ export default function ArchAuditApp() {
       <header className="flex shrink-0 items-center justify-between border-b border-[rgb(var(--border)/0.6)] bg-[rgb(var(--bg))] px-4 py-2.5">
         <div className="flex items-center gap-3">
           <span
-            className="h-3.5 w-3.5 shrink-0"
-            style={{ background: "#5B8DEF", boxShadow: "0 0 10px #5B8DEF88" }}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[#5B8DEF]/40"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(91,141,239,0.28), rgba(52,211,153,0.16))",
+              boxShadow: "0 0 12px #5B8DEF55",
+            }}
             aria-hidden="true"
-          />
+          >
+            <Scale size={15} strokeWidth={2.2} style={{ color: "#5B8DEF" }} />
+          </span>
           <span
-            className="font-sans text-sm font-bold uppercase tracking-[0.32em] text-[rgb(var(--text))]"
+            className="font-sans text-sm font-bold uppercase tracking-[0.2em] text-[rgb(var(--text))]"
             data-testid="archaudit-logo"
           >
-            ARCHAUDIT
+            Cross-Examined
           </span>
           {isPro && (
             <span
@@ -1000,9 +1011,9 @@ export default function ArchAuditApp() {
               value={model}
               onChange={(e) => {
                 const v = e.target.value;
-                if (!isPro && v !== "gpt-4o-mini") {
-                  // Locked model chosen by a free user → prompt upgrade,
-                  // keep GPT-4o-mini selected.
+                if (!isPro && isPremiumModel(v)) {
+                  // Premium model chosen by a free user → prompt upgrade,
+                  // keep the current free model selected.
                   goPro();
                   return;
                 }
@@ -1013,12 +1024,12 @@ export default function ArchAuditApp() {
               title={
                 isPro
                   ? "Model used for the next Execute Audit run"
-                  : "GPT-4o-mini is free — pick a Pro model to unlock all models"
+                  : "GPT-4o-mini and Gemini are free — NVIDIA requires Pro"
               }
               className="cursor-pointer appearance-none bg-transparent font-mono text-[10px] uppercase tracking-widest text-[rgb(var(--muted))] outline-none transition-colors hover:text-[rgb(var(--text))] focus-visible:text-[rgb(var(--text))]"
             >
               {MODEL_OPTIONS.map((m) => {
-                const locked = !isPro && m.value !== "gpt-4o-mini";
+                const locked = !isPro && isPremiumModel(m.value);
                 return (
                   <option
                     key={m.value}
@@ -1188,7 +1199,7 @@ export default function ArchAuditApp() {
             {shareDataUrl ? (
               <img
                 src={shareDataUrl}
-                alt="ARCHAUDIT share card"
+                alt="Cross-Examined share card"
                 data-testid="share-card-image"
                 className="w-full rounded-lg border border-[rgb(var(--border))]"
               />
@@ -1251,7 +1262,7 @@ export default function ArchAuditApp() {
       {/* Footer */}
       <footer className="flex shrink-0 items-center justify-between border-t border-[rgb(var(--border)/0.6)] bg-[rgb(var(--bg))] px-4 py-1.5">
         <span className="font-mono text-[10px] uppercase tracking-widest text-[rgb(var(--muted)/0.7)]">
-          ARCHAUDIT
+          Cross-Examined
         </span>
         <span
           className="font-mono text-[10px] uppercase tracking-widest"

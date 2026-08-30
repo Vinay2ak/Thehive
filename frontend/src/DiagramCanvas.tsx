@@ -54,16 +54,27 @@ function parseDiagram(
   levelTokens.forEach((lvl, li) => {
     const sorted = [...lvl].sort((a, b) => a.col - b.col).slice(0, 4);
     sorted.forEach((tk, k) => {
+      const marked = /!/.test(tk.text);
+      const clean = tk.text.replace(/!/g, "").replace(/\s+/g, " ").trim();
       nodes.push({
         id: `${li}-${k}`,
-        text: tk.text.slice(0, 48),
+        text: (clean || tk.text).slice(0, 48),
         level: li,
         idx: k,
         count: sorted.length,
-        flagged: mode !== "architect" && FLAG_RE[mode].test(tk.text),
+        flagged: mode !== "architect" && (marked || FLAG_RE[mode].test(tk.text)),
       });
     });
   });
+
+  // Guarantee the Chaos failure map always highlights at least one risk node:
+  // if nothing matched, flag the deepest level (where the system collapses).
+  if (mode === "chaos" && nodes.length && !nodes.some((n) => n.flagged)) {
+    const maxL = Math.max(...nodes.map((n) => n.level));
+    nodes.forEach((n) => {
+      if (n.level === maxL) n.flagged = true;
+    });
+  }
 
   const edges: DEdge[] = [];
   const maxLevel = levelTokens.length;
@@ -89,7 +100,7 @@ function parseDiagram(
   return { nodes, edges, levels: maxLevel };
 }
 
-const BAND = 78;
+const BAND = 100;
 
 export const DiagramCanvas: React.FC<{
   diagram: string;
@@ -164,9 +175,9 @@ export const DiagramCanvas: React.FC<{
             const b = nodeById(e.to);
             if (!a || !b) return null;
             const x1 = xOf(a);
-            const y1 = yOf(a) + 20;
+            const y1 = yOf(a) + 24;
             const x2 = xOf(b);
-            const y2 = yOf(b) - 20;
+            const y2 = yOf(b) - 24;
             const ym = (y1 + y2) / 2;
             const d = `M ${x1} ${y1} L ${x1} ${ym} L ${x2} ${ym} L ${x2} ${y2}`;
             return (
@@ -185,29 +196,39 @@ export const DiagramCanvas: React.FC<{
       {w > 0 &&
         nodes.map((n) => {
           const slotW = w / n.count;
-          const maxW = Math.max(64, Math.min(slotW - 12, 220));
+          const maxW = Math.max(56, Math.min(slotW - 8, 210));
           return (
             <div
               key={n.id}
-              className="dg-node absolute rounded-md border bg-[rgb(var(--panel-2))] px-2.5 py-1.5 text-center font-mono text-[11px] leading-tight text-[rgb(var(--text))]"
+              data-testid={n.flagged ? `${testid}-flagged-node` : undefined}
+              className="dg-node absolute rounded-md border px-2 py-1.5 text-center font-mono text-[10px] leading-[1.2] text-[rgb(var(--text))]"
               style={
                 {
                   left: xOf(n),
                   top: yOf(n),
                   maxWidth: maxW,
+                  minWidth: 48,
                   transform: "translate(-50%, -50%)",
                   borderColor: n.flagged ? accent : "rgb(var(--border-2))",
-                  borderWidth: n.flagged ? 1.5 : 1,
-                  boxShadow: n.flagged ? `0 0 0 1px ${accent}44` : "none",
+                  borderWidth: n.flagged ? 2 : 1,
+                  background: n.flagged ? `${accent}1f` : "rgb(var(--panel-2))",
+                  boxShadow: n.flagged ? `0 0 0 3px ${accent}33` : "none",
                   animationDelay: `${n.level * 90}ms`,
-                  overflow: "hidden",
-                  display: "-webkit-box",
-                  WebkitLineClamp: 3,
-                  WebkitBoxOrient: "vertical",
+                  whiteSpace: "normal",
                   wordBreak: "break-word",
+                  hyphens: "auto",
                 } as React.CSSProperties
               }
             >
+              {n.flagged && mode === "chaos" && (
+                <span
+                  className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold leading-none"
+                  style={{ background: accent, color: "#0B0F17" }}
+                  aria-hidden="true"
+                >
+                  !
+                </span>
+              )}
               {n.text}
             </div>
           );
