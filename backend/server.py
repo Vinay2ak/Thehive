@@ -13,7 +13,7 @@ from starlette.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-from openai import AsyncOpenAI
+from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -27,9 +27,9 @@ logger = logging.getLogger("archaudit")
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
-NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
-MODEL = "google/gemma-4-31b-it"
-TIMEOUT_SECONDS = 25
+MODEL = "gpt-4o-mini"
+PROVIDER = "openai"
+TIMEOUT_SECONDS = 20
 HEARTBEAT_SECONDS = 8
 DELIM = "===SUMMARY==="
 PATCHED_DELIM = "===PATCHED==="
@@ -242,26 +242,21 @@ def split_arbiter(text: str):
 
 
 async def call_agent(system_message: str, user_text: str, stage: str):
-    """Call NVIDIA NIM (OpenAI-compatible). Returns raw text or None on failure."""
-    api_key = os.environ.get("NVIDIA_API_KEY")
+    """Call the LLM via Emergent Universal key. Returns raw text or None on failure."""
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
     if not api_key:
-        logger.warning("[%s] NVIDIA_API_KEY missing — using deterministic mock.", stage)
+        logger.warning("[%s] EMERGENT_LLM_KEY missing — using deterministic mock.", stage)
         return None
     try:
-        client = AsyncOpenAI(base_url=NVIDIA_BASE_URL, api_key=api_key)
-        resp = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=MODEL,
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": user_text},
-                ],
-                temperature=0.4,
-                max_tokens=1200,
-            ),
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=str(uuid.uuid4()),
+            system_message=system_message,
+        ).with_model(PROVIDER, MODEL)
+        return await asyncio.wait_for(
+            chat.send_message(UserMessage(text=user_text)),
             timeout=TIMEOUT_SECONDS,
         )
-        return resp.choices[0].message.content
     except asyncio.TimeoutError:
         logger.error("[%s] LLM call timed out after %ss — using mock.", stage, TIMEOUT_SECONDS)
         return None

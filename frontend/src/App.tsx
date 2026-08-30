@@ -1,5 +1,17 @@
-import React, { useMemo, useRef, useState } from "react";
-import { Volume2, VolumeX, Download, Copy, Check } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Volume2,
+  VolumeX,
+  Download,
+  Copy,
+  Check,
+  AlertTriangle,
+  ShieldCheck,
+  CheckCircle2,
+  Sun,
+  Moon,
+} from "lucide-react";
+import { DiagramCanvas } from "@/DiagramCanvas";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL as string;
 const API = `${BACKEND_URL}/api`;
@@ -45,13 +57,13 @@ const DEFAULT_REQUIREMENTS =
   "with custom aliases, analytics, and 99.99% uptime.";
 
 const COLUMNS: Record<string, { accent: string; verdict: string }> = {
-  architect: { accent: "#5B8DEF", verdict: "STRUCTURALLY SOUND" },
-  chaos: { accent: "#E8543E", verdict: "FRACTURE DETECTED" },
-  hardened: { accent: "#3ECF8E", verdict: "HARDENED — PASS" },
+  architect: { accent: "#5B8DEF", verdict: "Baseline" },
+  chaos: { accent: "#E8A33D", verdict: "Risks Found" },
+  hardened: { accent: "#34D399", verdict: "Verified" },
 };
 
-const CHAOS = "#E8543E";
-const MINT = "#3ECF8E";
+const CHAOS = "#E8A33D";
+const MINT = "#34D399";
 
 function formatElapsed(ms?: number): string | null {
   if (ms == null) return null;
@@ -86,176 +98,184 @@ function StageColumn(props: {
     window.setTimeout(() => setCopied(false), 1400);
   };
 
+  const VerdictIcon =
+    props.columnKey === "chaos"
+      ? AlertTriangle
+      : props.columnKey === "hardened"
+        ? ShieldCheck
+        : CheckCircle2;
+
   return (
     <div
-      className="relative flex min-h-[300px] min-w-0 flex-col border-b border-[#1E3A5F]/50 last:border-b-0 md:h-full md:min-h-0 md:flex-1 md:border-b-0 md:border-r"
+      className="relative flex min-h-[300px] min-w-0 flex-col overflow-hidden rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--panel)/0.7)] backdrop-blur-md md:h-full md:min-h-0 md:flex-1"
       data-testid={testid}
       style={accentVars}
     >
-      {/* Top accent bar (role color) */}
-      <div
-        className="h-[3px] w-full shrink-0"
-        style={{ background: accent, boxShadow: `0 0 12px ${accent}66` }}
-      />
+      {/* Top accent bar */}
+      <div className="h-[3px] w-full shrink-0" style={{ background: accent }} />
 
-      {/* Header row */}
-      <div className="relative z-10 flex shrink-0 flex-col gap-2 border-b border-[#1E3A5F]/50 bg-[#0E1524]/70 px-3 py-2.5 backdrop-blur-sm">
-        <div className="flex min-w-0 items-start gap-2">
+      {/* Header: title (left) + verdict pill (right, own clear zone) */}
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[rgb(var(--border))] px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
           <span
-            className="mt-[3px] h-2 w-2 shrink-0"
+            className="h-2 w-2 shrink-0 rounded-[1px]"
             style={{ background: accent }}
             aria-hidden="true"
           />
-          <span className="font-sans text-xs font-semibold uppercase tracking-[0.18em] text-[#F2F0E9]">
+          <span className="truncate font-sans text-xs font-semibold uppercase tracking-[0.14em] text-[rgb(var(--text))]">
             {title}
           </span>
         </div>
         {state.status === "loaded" && (
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={copyDiagram}
-              data-testid={`${testid}-copy`}
-              aria-label="Copy ASCII diagram"
-              title={copied ? "Copied" : "Copy diagram"}
-              className="flex h-6 items-center gap-1 border px-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F2F0E9]"
-              style={{ borderColor: `${accent}66`, color: accent }}
-            >
-              {copied ? <Check size={11} /> : <Copy size={11} />}
-              <span className="hidden sm:inline">
-                {copied ? "Copied" : "Copy"}
-              </span>
-            </button>
-          </div>
+          <span
+            className="badge-pop inline-flex max-w-[140px] shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-sans text-[10px] font-medium"
+            style={{
+              borderColor: `${accent}66`,
+              color: accent,
+              background: `${accent}14`,
+            }}
+            data-testid={`${testid}-verdict`}
+            title={verdict}
+          >
+            <VerdictIcon size={11} className="shrink-0" />
+            <span className="truncate">{verdict}</span>
+          </span>
         )}
       </div>
 
-      {/* Body */}
-      <div className="relative min-h-0 flex-1 overflow-auto">
-        {/* Blueprint grid texture, tinted in the panel's role color */}
+      {/* Fallback banner: full-width row directly under header, own clear zone */}
+      {state.status === "loaded" && state.fallback && (
         <div
-          aria-hidden="true"
-          className="blueprint-grid pointer-events-none absolute inset-0 opacity-[0.09]"
-          style={{ "--tint": accent } as React.CSSProperties}
-        />
-
-        <div className="relative z-10 h-full p-4">
-          {state.status === "idle" && (
-            <div
-              className="relative flex h-full items-center justify-center overflow-hidden"
-              data-testid={`${testid}-idle`}
-            >
-              <div className="scanline" />
-              <span className="font-mono text-xs tracking-[0.22em] text-[#8FA8B8]/50">
-                AWAITING_INPUT<span className="archaudit-blink">_</span>
-              </span>
-            </div>
-          )}
-
-          {state.status === "loading" && (
-            <div
-              className="relative flex h-full items-center justify-center overflow-hidden"
-              data-testid={`${testid}-loading`}
-            >
-              <div className="scanline scanline--gen" />
-              <span
-                className="font-mono text-xs tracking-[0.18em]"
-                style={{ color: accent }}
-              >
-                COMPILING_RESPONSE<span className="archaudit-blink">_</span>
-              </span>
-            </div>
-          )}
-
-          {state.status === "error" && (
-            <div
-              className="flex h-full items-center justify-center px-2 text-center"
-              data-testid={`${testid}-error`}
-            >
-              <span
-                className="font-mono text-xs tracking-wide"
-                style={{ color: CHAOS }}
-              >
-                STAGE_FAILED — SHOWING_CACHED_FALLBACK
-              </span>
-            </div>
-          )}
-
-          {state.status === "loaded" && (
-            <div
-              className="relative flex h-full min-w-0 flex-col"
-              data-testid={`${testid}-loaded`}
-            >
-              {/* Verdict stamp */}
-              <div className="verdict-stamp" data-testid={`${testid}-verdict`}>
-                {verdict}
-              </div>
-
-              <div className="reveal flex min-w-0 flex-col gap-3">
-                {state.fallback && (
-                  <div
-                    className="border px-2 py-1"
-                    style={{ borderColor: `${CHAOS}66`, background: `${CHAOS}0D` }}
-                    data-testid={`${testid}-fallback-banner`}
-                  >
-                    <span
-                      className="font-mono text-[10px] uppercase tracking-widest"
-                      style={{ color: CHAOS }}
-                    >
-                      STAGE_FAILED — SHOWING_CACHED_FALLBACK
-                    </span>
-                  </div>
-                )}
-                <pre
-                  className="max-w-full overflow-x-auto whitespace-pre font-mono text-[9px] leading-[1.5] text-[#C9D6E0] sm:text-[10px] 2xl:text-[11px]"
-                  data-testid={`${testid}-diagram`}
-                >
-                  {state.diagram}
-                </pre>
-                <p
-                  className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-[#8FA8B8]"
-                  data-testid={`${testid}-summary`}
-                >
-                  {state.summary}
-                </p>
-
-                {state.patched.length > 0 && (
-                  <div
-                    className="mt-1 border-t border-[#1E3A5F]/60 pt-3"
-                    data-testid={`${testid}-patched`}
-                  >
-                    <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[#8FA8B8]/70">
-                      // patched_from_chaos_injection
-                    </div>
-                    <ul className="flex flex-col gap-2">
-                      {state.patched.map((p, i) => (
-                        <li
-                          key={i}
-                          className="font-mono text-[11px] leading-snug"
-                          data-testid={`${testid}-patched-item-${i}`}
-                        >
-                          <div className="flex gap-1.5" style={{ color: CHAOS }}>
-                            <span style={{ color: MINT }}>[✓]</span>
-                            <span
-                              className="line-through"
-                              style={{ textDecorationColor: `${CHAOS}80` }}
-                            >
-                              {p.weakness}
-                            </span>
-                          </div>
-                          {p.fix && (
-                            <div className="pl-5" style={{ color: MINT }}>
-                              └─ {p.fix}
-                            </div>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          className="flex shrink-0 items-center gap-1.5 border-b border-[rgb(var(--border))] px-3 py-1.5"
+          style={{ background: `${CHAOS}14` }}
+          data-testid={`${testid}-fallback-banner`}
+        >
+          <AlertTriangle size={11} style={{ color: CHAOS }} className="shrink-0" />
+          <span
+            className="font-sans text-[10px] font-medium tracking-wide"
+            style={{ color: CHAOS }}
+          >
+            STAGE_FAILED — SHOWING CACHED FALLBACK
+          </span>
         </div>
+      )}
+
+      {/* Toolbar: copy (own row) */}
+      {state.status === "loaded" && (
+        <div className="flex shrink-0 justify-end border-b border-[rgb(var(--border))] px-3 py-1.5">
+          <button
+            onClick={copyDiagram}
+            data-testid={`${testid}-copy`}
+            aria-label="Copy diagram source"
+            title={copied ? "Copied" : "Copy diagram"}
+            className="inline-flex h-6 items-center gap-1 rounded-md border border-[rgb(var(--border-2))] px-2 font-sans text-[10px] font-medium text-[rgb(var(--muted))] transition-colors hover:border-[rgb(var(--border-3))] hover:text-[rgb(var(--text))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF]"
+          >
+            {copied ? <Check size={11} /> : <Copy size={11} />}
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+      )}
+
+      {/* Body */}
+      <div className="relative min-h-0 flex-1 overflow-auto p-4">
+        {state.status === "idle" && (
+          <div
+            className="flex h-full items-center justify-center"
+            data-testid={`${testid}-idle`}
+          >
+            <span className="font-mono text-[11px] tracking-wide text-[rgb(var(--muted)/0.6)]">
+              awaiting input…
+            </span>
+          </div>
+        )}
+
+        {state.status === "loading" && (
+          <div
+            className="flex h-full flex-col items-center gap-4 pt-6"
+            data-testid={`${testid}-loading`}
+          >
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="dg-skel rounded-md border border-[rgb(var(--border-2))] bg-[rgb(var(--panel-2))]"
+                style={{ width: 150 - i * 12, height: 34, animationDelay: `${i * 160}ms` }}
+              />
+            ))}
+            <span className="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-[rgb(var(--muted))]">
+              compiling
+            </span>
+          </div>
+        )}
+
+        {state.status === "error" && (
+          <div
+            className="flex h-full items-center justify-center px-2 text-center"
+            data-testid={`${testid}-error`}
+          >
+            <span className="font-sans text-xs" style={{ color: CHAOS }}>
+              Stage failed — showing cached fallback
+            </span>
+          </div>
+        )}
+
+        {state.status === "loaded" && (
+          <div
+            className="flex min-w-0 flex-col gap-4"
+            data-testid={`${testid}-loaded`}
+          >
+            <DiagramCanvas
+              diagram={state.diagram}
+              mode={props.columnKey as "architect" | "chaos" | "hardened"}
+              accent={accent}
+              testid={`${testid}-diagram`}
+            />
+            <p
+              className="text-[13px] leading-relaxed text-[rgb(var(--muted))]"
+              data-testid={`${testid}-summary`}
+            >
+              {state.summary}
+            </p>
+
+            {state.patched.length > 0 && (
+              <div
+                className="border-t border-[rgb(var(--border))] pt-3"
+                data-testid={`${testid}-patched`}
+              >
+                <div className="mb-2 font-sans text-[10px] font-semibold uppercase tracking-[0.16em] text-[rgb(var(--muted))]">
+                  Patched from chaos injection
+                </div>
+                <ul className="flex flex-col gap-2">
+                  {state.patched.map((p, i) => (
+                    <li
+                      key={`${p.weakness}-${i}`}
+                      className="text-[12px] leading-snug"
+                      data-testid={`${testid}-patched-item-${i}`}
+                    >
+                      <div className="flex items-start gap-1.5">
+                        <Check
+                          size={13}
+                          className="mt-[1px] shrink-0"
+                          style={{ color: MINT }}
+                        />
+                        <span
+                          className="text-[rgb(var(--muted))] line-through"
+                          style={{ textDecorationColor: `${CHAOS}66` }}
+                        >
+                          {p.weakness}
+                        </span>
+                      </div>
+                      {p.fix && (
+                        <div className="pl-[18px] text-[12px]" style={{ color: MINT }}>
+                          {p.fix}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -268,7 +288,15 @@ export default function ArchAuditApp() {
   const [chaos, setChaos] = useState<StageState>(EMPTY_STAGE);
   const [hardened, setHardened] = useState<StageState>(EMPTY_STAGE);
   const [muted, setMuted] = useState<boolean>(false);
+  const [theme, setTheme] = useState<"dark" | "light">(
+    () => (localStorage.getItem("archaudit-theme") as "dark" | "light") || "dark",
+  );
   const audioRef = useRef<AudioContext | null>(null);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("theme-light", theme === "light");
+    localStorage.setItem("archaudit-theme", theme);
+  }, [theme]);
 
   const ensureAudio = () => {
     if (!audioRef.current) {
@@ -449,7 +477,10 @@ export default function ArchAuditApp() {
           try {
             applyEvent(event, JSON.parse(data));
           } catch (e) {
-            // ignore malformed frame
+            // Malformed/partial SSE frame — safe to skip; next frame recovers.
+            if (process.env.NODE_ENV !== "production") {
+              console.error("ARCHAUDIT: dropped malformed SSE frame", e);
+            }
           }
         }
       }
@@ -470,9 +501,9 @@ export default function ArchAuditApp() {
   };
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-[#0B0F1A] text-[#F2F0E9]">
+    <div className="flex h-screen w-screen flex-col bg-[rgb(var(--bg))] text-[rgb(var(--text))]">
       {/* Top bar */}
-      <header className="flex shrink-0 items-center justify-between border-b border-[#1E3A5F]/60 bg-[#0B0F1A] px-4 py-2.5">
+      <header className="flex shrink-0 items-center justify-between border-b border-[rgb(var(--border)/0.6)] bg-[rgb(var(--bg))] px-4 py-2.5">
         <div className="flex items-center gap-3">
           <span
             className="h-3.5 w-3.5 shrink-0"
@@ -480,29 +511,43 @@ export default function ArchAuditApp() {
             aria-hidden="true"
           />
           <span
-            className="font-sans text-sm font-bold uppercase tracking-[0.32em] text-[#F2F0E9]"
+            className="font-sans text-sm font-bold uppercase tracking-[0.32em] text-[rgb(var(--text))]"
             data-testid="archaudit-logo"
           >
             ARCHAUDIT
           </span>
-          <span className="hidden font-mono text-[10px] uppercase tracking-widest text-[#8FA8B8]/70 sm:inline">
+          <span className="hidden font-mono text-[10px] uppercase tracking-widest text-[rgb(var(--muted)/0.7)] sm:inline">
             // adversarial architecture review
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 rounded-full border border-[rgb(var(--border))] bg-[rgb(var(--panel)/0.6)] px-2 py-1 backdrop-blur-md">
+          <button
+            onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+            data-testid="theme-toggle"
+            aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            title={theme === "dark" ? "Light mode" : "Dark mode"}
+            className="flex h-6 w-6 items-center justify-center rounded-full text-[rgb(var(--muted))] transition-colors hover:bg-[rgb(var(--muted)/0.15)] hover:text-[rgb(var(--text))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF]"
+          >
+            {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
+          </button>
           <button
             onClick={() => setMuted((m) => !m)}
             data-testid="sound-toggle"
             aria-label={muted ? "Unmute stamp sound" : "Mute stamp sound"}
             title={muted ? "Sound off" : "Sound on"}
-            className="flex h-6 w-6 items-center justify-center border border-[#1E3A5F] text-[#8FA8B8] transition-colors hover:text-[#F2F0E9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF]"
+            className="flex h-6 w-6 items-center justify-center rounded-full text-[rgb(var(--muted))] transition-colors hover:bg-[rgb(var(--muted)/0.15)] hover:text-[rgb(var(--text))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF]"
           >
             {muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
           </button>
-          <span className="font-mono text-[10px] uppercase tracking-widest text-[#8FA8B8]">
+          <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-[rgb(var(--muted))]">
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ background: MINT, boxShadow: `0 0 6px ${MINT}` }}
+              aria-hidden="true"
+            />
             gemma-4-31b
           </span>
-          <span className="border border-[#1E3A5F] px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-[#8FA8B8]/80">
+          <span className="rounded-full border border-[#5B8DEF]/40 bg-[#5B8DEF]/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-[#5B8DEF]">
             stateless
           </span>
         </div>
@@ -511,31 +556,26 @@ export default function ArchAuditApp() {
       {/* Body */}
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
         {/* Left sidebar — Command Terminal (30%) */}
-        <aside className="flex w-full shrink-0 flex-col border-b border-[#1E3A5F]/60 md:w-[30%] md:border-b-0 md:border-r">
-          <div className="flex shrink-0 items-center gap-2 border-b border-[#1E3A5F]/50 bg-[#0E1524]/70 px-3 py-2.5">
+        <aside className="flex w-full shrink-0 flex-col border-b border-[rgb(var(--border)/0.6)] md:w-[30%] md:border-b-0 md:border-r">
+          <div className="mx-2 mt-2 flex shrink-0 items-center gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--panel)/0.6)] px-3 py-2.5 backdrop-blur-md">
             <span
               className="h-2 w-2 shrink-0"
               style={{ background: "#5B8DEF" }}
               aria-hidden="true"
             />
-            <span className="font-sans text-xs font-semibold uppercase tracking-[0.18em] text-[#F2F0E9]">
+            <span className="font-sans text-xs font-semibold uppercase tracking-[0.18em] text-[rgb(var(--text))]">
               Command Terminal
             </span>
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col p-3">
-            <label className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[#8FA8B8]/70">
+            <label className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[rgb(var(--muted)/0.7)]">
               // requirements.spec
             </label>
 
-            <div className="relative flex min-h-[200px] flex-1 border border-[#1E3A5F]/70 bg-[#070B14] focus-within:ring-1 focus-within:ring-[#5B8DEF]">
+            <div className="relative flex min-h-[200px] flex-1 overflow-hidden rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--panel)/0.5)] backdrop-blur-md focus-within:ring-1 focus-within:ring-[#5B8DEF]">
               <div
-                aria-hidden="true"
-                className="blueprint-grid pointer-events-none absolute inset-0 opacity-[0.06]"
-                style={{ "--tint": "#5B8DEF" } as React.CSSProperties}
-              />
-              <div
-                className="relative z-10 select-none overflow-hidden border-r border-[#1E3A5F]/60 bg-[#0E1524]/60 px-2 py-2 text-right font-mono text-[11px] leading-relaxed text-[#8FA8B8]/40"
+                className="relative z-10 select-none overflow-hidden border-r border-[rgb(var(--border))] bg-[rgb(var(--panel)/0.4)] px-2 py-2 text-right font-mono text-[11px] leading-relaxed text-[rgb(var(--muted)/0.4)]"
                 aria-hidden="true"
               >
                 {lineNumbers.map((n) => (
@@ -547,7 +587,7 @@ export default function ArchAuditApp() {
                 onChange={(e) => setRequirements(e.target.value)}
                 spellCheck={false}
                 data-testid="requirements-input"
-                className="relative z-10 min-h-0 flex-1 resize-none bg-transparent px-3 py-2 font-mono text-[13px] leading-relaxed text-[#CFE0EB] caret-[#5B8DEF] outline-none placeholder:text-[#8FA8B8]/40 focus-visible:outline-none"
+                className="relative z-10 min-h-0 flex-1 resize-none bg-transparent px-3 py-2 font-mono text-[13px] leading-relaxed text-[rgb(var(--text))] caret-[#5B8DEF] outline-none placeholder:text-[rgb(var(--muted)/0.4)] focus-visible:outline-none"
                 placeholder="Describe the system to audit..."
               />
             </div>
@@ -556,7 +596,7 @@ export default function ArchAuditApp() {
               onClick={executeAudit}
               disabled={running || !requirements.trim()}
               data-testid="execute-audit-button"
-              className="mt-3 shrink-0 rounded-none border border-transparent bg-[#F2F0E9] px-4 py-3 font-sans text-xs font-bold uppercase tracking-[0.18em] text-[#0B0F1A] transition-colors duration-150 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F1A] disabled:cursor-not-allowed disabled:bg-[#1E3A5F]/50 disabled:text-[#8FA8B8]/50"
+              className="mt-3 shrink-0 rounded-xl border border-[rgb(var(--text)/0.2)] bg-[rgb(var(--text)/0.9)] px-4 py-3 font-sans text-xs font-bold uppercase tracking-[0.18em] text-[rgb(var(--bg))] backdrop-blur-md transition-colors duration-150 hover:bg-[rgb(var(--text))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(var(--bg))] disabled:cursor-not-allowed disabled:bg-[rgb(var(--border)/0.4)] disabled:text-[rgb(var(--muted)/0.5)]"
             >
               {running ? "AUDIT_RUNNING..." : "EXECUTE AUDIT"}
             </button>
@@ -565,7 +605,7 @@ export default function ArchAuditApp() {
               onClick={exportReport}
               disabled={!canExport}
               data-testid="export-report-button"
-              className="mt-2 flex shrink-0 items-center justify-center gap-2 rounded-none border border-[#1E3A5F] bg-transparent px-4 py-2.5 font-sans text-xs font-semibold uppercase tracking-[0.18em] text-[#8FA8B8] transition-colors duration-150 hover:border-[#5B8DEF] hover:text-[#F2F0E9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F1A] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#1E3A5F] disabled:hover:text-[#8FA8B8]"
+              className="mt-2 flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--panel)/0.5)] px-4 py-2.5 font-sans text-xs font-semibold uppercase tracking-[0.18em] text-[rgb(var(--muted))] backdrop-blur-md transition-colors duration-150 hover:border-[#5B8DEF] hover:text-[rgb(var(--text))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B8DEF] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(var(--bg))] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[rgb(var(--border))] disabled:hover:text-[rgb(var(--muted))]"
             >
               <Download size={13} />
               Export Report
@@ -575,7 +615,7 @@ export default function ArchAuditApp() {
 
         {/* Main canvas — three columns (70%) */}
         <main className="min-w-0 flex-1 md:overflow-hidden">
-          <div className="flex min-h-0 flex-col md:h-full md:flex-row">
+          <div className="flex min-h-0 flex-col gap-2 p-2 md:h-full md:flex-row">
             <StageColumn
               columnKey="architect"
               title="v1.0 ARCHITECT"
@@ -605,13 +645,13 @@ export default function ArchAuditApp() {
       </div>
 
       {/* Footer */}
-      <footer className="flex shrink-0 items-center justify-between border-t border-[#1E3A5F]/60 bg-[#0B0F1A] px-4 py-1.5">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-[#8FA8B8]/70">
+      <footer className="flex shrink-0 items-center justify-between border-t border-[rgb(var(--border)/0.6)] bg-[rgb(var(--bg))] px-4 py-1.5">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-[rgb(var(--muted)/0.7)]">
           ARCHAUDIT
         </span>
         <span
           className="font-mono text-[10px] uppercase tracking-widest"
-          style={{ color: running ? MINT : "#8FA8B8" }}
+          style={{ color: running ? MINT : "rgb(var(--muted))" }}
         >
           {running ? "STREAM_OPEN" : "READY"}
         </span>

@@ -1,0 +1,27 @@
+{
+  "summary": "Frontend-only visual redesign verification of ArchAudit diagram panels. Ran 3 full audit flows against the live preview URL (REACT_APP_BACKEND_URL): default requirement @ 1280px, long-label requirement @ 1280px, and default @ 390px mobile. All acceptance criteria met: (1) each loaded column's column-*-diagram wrapper contains 5-9 positioned .dg-node <div> boxes and an <svg> with connector <path>s and zero <pre> ASCII blocks; (2) no diagram node overflows its column bounding box at 1280px nor at 390px, including with the long-CQRS/Kafka/exactly-once label; (3) verdict pill (column-*-verdict) sits top-right of the header with no overlap of the title, and the STAGE_FAILED fallback banner (column-*-fallback-banner) renders as a distinct full-width row directly under the header (no overlap with the pill); (4) each result column measures exactly 320px min-width at 1280px viewport and content is not clipped inside the column; (5) while streaming, 9 .dg-skel skeleton nodes + 3 'compiling' labels are present (3 per pending column) — no ASCII partials; (6) at 390px the three columns stack vertically (tops 605 / 1083 / 1893) with no horizontal page overflow (scrollWidth == clientWidth == 390); (7) column-*-copy buttons present on all three loaded columns and export-report-button becomes enabled after hardened loads. Fallback banner appeared in these runs (NVIDIA >25s per stage) as expected. No console errors captured.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/screen_default_1280_1280.png",
+    "/app/test_reports/screen_longlabels_1280_1280.png",
+    "/app/test_reports/screen_mobile_390.png"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "DiagramCanvas.parseDiagram silently caps to 4 tokens per level (slice(0,4)) and 48 chars per label (slice(0,48)); acceptable for the current visual quality bar but worth documenting so a future LLM prompt change doesn't inadvertently drop nodes.",
+    "App.tsx is ~635 lines — still under the 700-line threshold but StageColumn + SSE reader + audio helpers should be split into modules soon.",
+    "DiagramCanvas node maxWidth uses Math.min(slotW - 14, 220) with a hard floor of 108; at 320px columns with count=4 the slot is ~80px so the floor (108) can produce a node wider than its slot. In practice line-clamp + wordBreak keep text inside the column boundary (verified — 0 overflow in all three runs), but nodes CAN visually overlap each other horizontally when count>=4. Consider dropping the 108 floor or ensuring the column always has enough width."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped)", "frontend": "100%"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Overflow was validated by comparing each .dg-node getBoundingClientRect() against the parent [data-testid=column-<key>] rect (right/left/top/bottom) — this is the strict quality bar for this redesign. All three runs returned overflow=[] arrays. Node counts observed per column: architect=5, chaos=9, hardened=9. Ensure any future change to DiagramCanvas' maxWidth formula (Math.max(108, Math.min(slotW-14, 220))) is re-tested at 320px column width with count>=4, since the 108 floor could exceed slotW and cause horizontal collisions (visual overlap between siblings, though still within column bounds).",
+  "rca of the issue": "N/A — visual redesign verified working as spec'd."
+}

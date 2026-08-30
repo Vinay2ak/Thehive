@@ -1,0 +1,30 @@
+{
+  "summary": "Full end-to-end verification of ArchAudit primary bug fix (real question-specific LLM answers via EMERGENT_LLM_KEY + gpt-4o-mini) plus rounded/glass panels + no-horizontal-scroll layout. Backend curl (POST /api/audit) with hospital requirement returned SSE architect_done/attack_done with fallback:false, elapsed ~1.8s per stage, and domain-relevant content (Patient Records Service, Appointment Service, Billing Service, Database Service). Frontend Playwright run @1280x900: typed 'Design a hospital patient records system with appointment scheduling and billing', clicked EXECUTE AUDIT, all three columns reached column-*-loaded within ~15s. NO fallback banners present on any column. Summaries verified domain-relevant: architect summary mentions patient/appointment/billing/records/scheduling; chaos summary mentions hospital/patient/appointment/billing/records/scheduling; hardened summary is generic hardening prose (load balancers, DB replicas, caching) but its diagram/patched list retain domain nodes (Patient Records, Appointment, Billing, Scheduling visible in screenshot) so acceptance criterion 'relevant to hospital domain' is met across the three panels overall. Layout: document scrollWidth==clientWidth==1280 (no horizontal scroll), main scrollWidth==clientWidth==896, hardened column right=1272 (fully within viewport). column-architect class list includes rounded-xl, border, bg-[#10151F]/70, backdrop-blur-md — glass panels confirmed. Diagram regression: each column-*-diagram has 5-9 .dg-node divs + 1 <svg> connector, 0 <pre> ASCII blocks. Copy buttons present on all three columns. export-report-button disabled attr = None (enabled) after hardened completes. Mobile @390x844: docScrollWidth==clientWidth==390 (no horizontal overflow), panels stack vertically. All acceptance criteria in the review request are met.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Top bar / Footer", "issues": ["Model label still reads 'gemma-4-31b' (hardcoded in App.tsx line ~521 and in buildReport() 'Model: gemma-4-31b (NVIDIA NIM)') but the backend now uses gpt-4o-mini via Emergent. Cosmetic mismatch — not a blocker but should be updated for accuracy in the exported report and the header pill."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/screen_1280.png",
+    "/app/test_reports/screen_390.png"
+  ],
+  "action_items": [
+    "Optional: update hardcoded 'gemma-4-31b (NVIDIA NIM)' label in App.tsx (header + exported report metadata) to reflect the actual model in use (gpt-4o-mini via Emergent Universal key)."
+  ],
+  "critical_code_review_comments": [
+    "App.tsx is ~635 lines — nearing the 700-line threshold; StageColumn, SSE reader, and audio helpers should be split into separate modules.",
+    "Model name string is duplicated (header pill + report generator) — should be a single constant, ideally sourced from the backend response so UI never drifts from actual provider.",
+    "Backend server.py hides all LLM errors and always falls back to mock silently (except a log line). Consider surfacing an SSE 'stage_error' event with a machine-readable reason so the UI could show a differentiated banner instead of the generic CACHED_FALLBACK pill."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (SSE stream returns real fallback:false domain-relevant output ~2s/stage)", "frontend": "100% (all 6 review-request criteria pass)"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend now uses emergentintegrations LlmChat with EMERGENT_LLM_KEY, PROVIDER=openai, MODEL=gpt-4o-mini, TIMEOUT_SECONDS=20. Verified real (not mocked) responses in ~2s per stage — no fallback banner in normal path. Frontend hardcodes 'gemma-4-31b (NVIDIA NIM)' as display/export label; if main agent updates the model in backend, remember to update those two strings in /app/frontend/src/App.tsx too. Rounded/glass done via rounded-xl + bg-[#10151F]/70 + backdrop-blur-md on StageColumn root; three columns fit at 1280px because min-w-0 md:flex-1 (no fixed min-width) and <main> uses md:overflow-hidden.",
+  "rca of the issue": "Root cause of the original 'generic/incorrect answers' bug was the NVIDIA NIM endpoint timing out (>20s) causing resolve_stage() to return the deterministic MOCK_* payloads — which are URL-shortener-shaped, hence appearing 'generic' regardless of user input. Fix (already applied by main agent): swap provider to Emergent Universal key + gpt-4o-mini. Verified: all 3 stages return fallback:false in ~2s each and content is question-specific."
+}
